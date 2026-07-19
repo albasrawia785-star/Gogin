@@ -15,7 +15,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. إعداد بيئة جافا
+      # 2. إعداد بيئة جافا (JDK 17)
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -26,8 +26,8 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. إلغاء واجهة نظام الطباعة (PDF) وحقن الطباعة المباشرة عبر البلوتوث
-      - name: Bypass PrintManager and Build APK
+      # 4. معالجة وتعديل الأكواد سطرياً لحل المشاكل الثلاث وبناء الـ APK
+      - name: Patch Blueprint and Build APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
@@ -42,33 +42,44 @@ jobs:
           echo "🛠️ 1. إنشاء وإصلاح ملف الكلاس المفقود POSRepository.kt..."
           mkdir -p app/src/main/java/com/example/data
           echo -e "package com.example.data\nimport kotlinx.coroutines.flow.Flow\nclass POSRepository(private val posDao: POSDao) {\n val allCategories: Flow<List<Category>> = posDao.getAllCategories()\n val allProducts: Flow<List<Product>> = posDao.getAllProducts()\n val allInvoices: Flow<List<Invoice>> = posDao.getAllInvoices()\n val allShiftLogs: Flow<List<ShiftLog>> = posDao.getAllShiftLogs()\n val allInvoiceItems: Flow<List<InvoiceItem>> = posDao.getAllInvoiceItems()\n suspend fun prepopulateIfEmpty() {}\n suspend fun createInvoice(invoice: Invoice, items: List<InvoiceItem>): Long { val id = posDao.insertInvoice(invoice); items.forEach { posDao.insertInvoiceItem(it.copy(invoiceNumber = id)) }; return id }\n suspend fun insertCategory(category: Category) = posDao.insertCategory(category)\n suspend fun updateCategory(category: Category) = posDao.updateCategory(category)\n suspend fun deleteCategory(category: Category) = posDao.deleteCategory(category)\n suspend fun insertProduct(product: Product) = posDao.insertProduct(product)\n suspend fun updateProduct(product: Product) = posDao.updateProduct(product)\n suspend fun deleteProduct(product: Product) = posDao.deleteProduct(product)\n suspend fun insertShiftLog(shiftLog: ShiftLog) = posDao.insertShiftLog(shiftLog)\n suspend fun updateShiftLog(shiftLog: ShiftLog) = posDao.updateShiftLog(shiftLog)\n suspend fun deleteShiftLog(shiftLog: ShiftLog) = posDao.deleteShiftLog(shiftLog)\n suspend fun deleteInvoice(invoice: Invoice) { posDao.deleteInvoice(invoice); posDao.deleteInvoiceItemsByInvoiceNo(invoice.invoiceNumber) }\n suspend fun clearAllData() { posDao.clearCategories(); posDao.clearProducts(); posDao.clearInvoices(); posDao.clearInvoiceItems(); posDao.clearShiftLogs() }\n}" > app/src/main/java/com/example/data/POSRepository.kt
+
+          echo "🛠️ 2. تخطي وإلغاء قفل المهلة المجانية الـ 24 ساعة..."
+          VIEWMODEL_PATH=$(find app/src/main/java -name "POSViewModel.kt")
+          if [ -n "$VIEWMODEL_PATH" ]; then
+            sed -i 's/_isTrialExpired.value = true/_isTrialExpired.value = false/g' "$VIEWMODEL_PATH"
+            sed -i 's/if (passedTime >= hours24)/if (false)/g' "$VIEWMODEL_PATH"
+            echo "✅ تم تخطي نظام قفل الـ 24 ساعة!"
+          fi
           
-          echo "🛠️ 2. تعديل كود البلوتوث لمنع الكراش ودعم كافة الطابعات..."
+          echo "🛠️ 3. حقن صلاحيات البلوتوث والموقع لتفعيل نافذة سماح أو رفض يدوياً..."
+          MANIFEST_PATH="app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ]; then
+            sed -i '/<manifest/a \    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />' "$MANIFEST_PATH"
+            echo "✅ تم حقن الصلاحيات بنجاح!"
+          fi
+
+          echo "🛠️ 4. إصلاح كود البلوتوث لمنع كراش الأسماء الفارغة ودعم كافة الطابعات القريبة..."
           PRINTER_SERVICE_PATH=$(find app/src/main/java -name "BluetoothPrinterService.kt")
           if [ -n "$PRINTER_SERVICE_PATH" ]; then
             sed -i 's/if (rssi >= -65)/if (rssi >= -120)/g' "$PRINTER_SERVICE_PATH"
             sed -i 's/if (!device.name.isNullOrEmpty())/if (device != null \&\& !device.name.isNullOrEmpty())/g' "$PRINTER_SERVICE_PATH"
+            echo "✅ تم إصلاح كراش فحص الأسماء الفارغة!"
           fi
           
-          echo "🛠️ 3. تعطيل واجهة الـ PDF (PrintManager) تماماً وإجبار الكود على الطباعة الحرارية الصامتة..."
-          # هذا الأمر يبحث في كل ملفات المشروع عن سطر استدعاء PrintManager ويقوم بتعطيله أو استبداله بالطباعة المباشرة عبر البلوتوث لمنع ظهور الواجهة المزعجة
+          echo "🛠️ 5. إلغاء واجهة الـ PDF ونظام الـ PrintManager لتمكين الطباعة المباشرة الصامتة..."
           find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/getSystemService(Context.PRINT_SERVICE)/null/g' 2>/dev/null || true
           find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/PrintManager/Unit/g' 2>/dev/null || true
           
-          echo "🛠️ 4. تجهيز التوقيع وخدمات جوجل..."
+          echo "🚀 6. بدء بناء مشروع أندرويد وتوليد الـ APK النهائي المفتوح..."
           gradle wrapper
           chmod +x gradlew
-          
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-
           if [ ! -f "app/google-services.json" ]; then
             echo '{"project_info": {"project_number": "123456789", "project_id": "casher-mock-id"}, "client": [{"client_info": {"mobilesdk_app_id": "1:123456789:android:123456", "android_client_info": {"package_name": "com.aistudio.restaurantpos.vmdjqk"}}, "api_key": [{"current_key": "mock_api_key_here"}]}]}' > app/google-services.json
           fi
-
-          echo "🚀 5. بدء بناء نسخة الـ APK الصامتة الفعالة..."
           ./gradlew assembleDebug --no-daemon
 
-      # 5. استخراج ملف الـ APK النهائي
+      # 5. استخراج ملف الـ APK النهائي المصلح
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
