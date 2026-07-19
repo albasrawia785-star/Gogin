@@ -26,7 +26,7 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. معالجة وتأمين الأكواد للطباعة المباشرة وبناء الـ APK
+      # 4. معالجة وتأمين الأكواد وبناء الـ APK مع تفعيل الطباعة
       - name: Fix Printer and Build APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
@@ -62,10 +62,9 @@ jobs:
             echo "✅ تم تأمين ملف البلوتوث!"
           fi
           
-          echo "🛠️ 4. تحويل سطر استدعاء واجهة الـ PDF الافتراضية إلى تعليق (Comment) صامت..."
-          # تحويل سطر استدعاء الطباعة إلى تعليق باستخدام // ليتجاهله المترجم بأمان كامل دون كسر البنية
-          find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/printManager\.print(/\/\/ printManager.print(/g' 2>/dev/null || true
-          echo "✅ تم تصفير وتعطيل واجهة الـ PDF الافتراضية بشكل صامت!"
+          echo "🛠️ 4. الإبقاء على نظام ودوال الطباعة نشطة..."
+          # تم حذف سطر الـ sed الذي كان يعطل دالة printManager.print لضمان خروج الورقة بشكل صحيح.
+          echo "✅ نظام الطباعة مفعل وجاهز للإرسال المباشر للطابعة!"
           
           echo "🚀 5. توليد بيئة البناء والتوقيع وبدء الـ Compile لنسخة الـ APK..."
           gradle wrapper
