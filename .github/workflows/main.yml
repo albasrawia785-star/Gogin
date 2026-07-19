@@ -26,7 +26,7 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. إصلاح الأكواد بشكل سطرى لمنع أخطاء التنسيق وبناء الـ APK
+      # 4. إصلاح الأكواد (الكراش + التعرف على الطابعات + دفع ورق الطباعة) وبناء الـ APK
       - name: Configure and Build APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
@@ -43,17 +43,30 @@ jobs:
           mkdir -p app/src/main/java/com/example/data
           echo -e "package com.example.data\nimport kotlinx.coroutines.flow.Flow\nclass POSRepository(private val posDao: POSDao) {\n val allCategories: Flow<List<Category>> = posDao.getAllCategories()\n val allProducts: Flow<List<Product>> = posDao.getAllProducts()\n val allInvoices: Flow<List<Invoice>> = posDao.getAllInvoices()\n val allShiftLogs: Flow<List<ShiftLog>> = posDao.getAllShiftLogs()\n val allInvoiceItems: Flow<List<InvoiceItem>> = posDao.getAllInvoiceItems()\n suspend fun prepopulateIfEmpty() {}\n suspend fun createInvoice(invoice: Invoice, items: List<InvoiceItem>): Long { val id = posDao.insertInvoice(invoice); items.forEach { posDao.insertInvoiceItem(it.copy(invoiceNumber = id)) }; return id }\n suspend fun insertCategory(category: Category) = posDao.insertCategory(category)\n suspend fun updateCategory(category: Category) = posDao.updateCategory(category)\n suspend fun deleteCategory(category: Category) = posDao.deleteCategory(category)\n suspend fun insertProduct(product: Product) = posDao.insertProduct(product)\n suspend fun updateProduct(product: Product) = posDao.updateProduct(product)\n suspend fun deleteProduct(product: Product) = posDao.deleteProduct(product)\n suspend fun insertShiftLog(shiftLog: ShiftLog) = posDao.insertShiftLog(shiftLog)\n suspend fun updateShiftLog(shiftLog: ShiftLog) = posDao.updateShiftLog(shiftLog)\n suspend fun deleteShiftLog(shiftLog: ShiftLog) = posDao.deleteShiftLog(shiftLog)\n suspend fun deleteInvoice(invoice: Invoice) { posDao.deleteInvoice(invoice); posDao.deleteInvoiceItemsByInvoiceNo(invoice.invoiceNumber) }\n suspend fun clearAllData() { posDao.clearCategories(); posDao.clearProducts(); posDao.clearInvoices(); posDao.clearInvoiceItems(); posDao.clearShiftLogs() }\n}" > app/src/main/java/com/example/data/POSRepository.kt
           
-          echo "🛠️ 2. تعديل فلتر البلوتوث وتوسيع نطاق البحث لمنع الكراش لدعم كافة الطابعات القريبة..."
+          echo "🛠️ 2. تعديل كود البلوتوث لمنع الكراش ودعم الطباعة الفعلية بدفع الورق..."
           PRINTER_SERVICE_PATH=$(find app/src/main/java -name "BluetoothPrinterService.kt")
           if [ -n "$PRINTER_SERVICE_PATH" ]; then
-            # استبدال الفلتر الصارم بفلتر يقبل أي جهاز طابعة قريبة بإشارة واسعة المدى
+            # 1. توسيع نطاق إشارة البحث لتغطية كل الطابعات القريبة
             sed -i 's/if (rssi >= -65)/if (rssi >= -120)/g' "$PRINTER_SERVICE_PATH"
-            # حماية برمجية للتأكد من عدم كراش الأسماء الفارغة
+            # 2. منع كراش الأجهزة التي بدون اسم
             sed -i 's/if (!device.name.isNullOrEmpty())/if (device != null \&\& !device.name.isNullOrEmpty())/g' "$PRINTER_SERVICE_PATH"
-            echo "✅ تم تعديل كود البلوتوث بنجاح السطري!"
+            echo "✅ تم تأمين كود البحث عن البلوتوث السطري!"
           fi
           
-          echo "🛠️ 3. تجهيز التوقيع وملف الخدمات الافتراضي لجوجل..."
+          echo "🛠️ 3. حقن أمر التغذية (Feed) لضمان خروج ورق الفاتورة عند الطباعة..."
+          # سنقوم بالبحث عن أي دالة إرسال داتا أو طباعة ونضمن أنها تنهي النص بأمر التغذية النمطي للـ ESC/POS وهو \n\n\n\n أو بايتات التغذية يدوياً
+          # مبرمجي الأندرويد عادة يستخدمون دالة مثل outputStream.write لطباعة النص
+          # هذا التعديل يضمن إجبار النصوص المطبوعة على دفع الأسطر للخارج
+          PRINT_UTILS=$(find app/src/main/java -name "*Print*.kt" -o -name "*Printer*.kt")
+          for file in $PRINT_UTILS; do
+            if grep -q "outputStream" "$file"; then
+              echo "📝 تم العثور على أمر الـ OutputStream في ملف: $file - جاري تدعيم خروج الورق..."
+              # حقن أسطر إضافية قبل إغلاق دالة الطباعة أو بعد إرسال النصوص لضمان دفع الورق 4 أسطر للأمام
+              sed -i 's/outputStream.write(bytes)/outputStream.write(bytes); outputStream.write(byteArrayOf(0x1B, 0x64, 0x04))/g' "$file"
+            fi
+          done
+
+          echo "🛠️ 4. تجهيز ملفات البيئة والتوقيع الافتراضي..."
           gradle wrapper
           chmod +x gradlew
           
@@ -63,10 +76,10 @@ jobs:
             echo '{"project_info": {"project_number": "123456789", "project_id": "casher-mock-id"}, "client": [{"client_info": {"mobilesdk_app_id": "1:123456789:android:123456", "android_client_info": {"package_name": "com.aistudio.restaurantpos.vmdjqk"}}, "api_key": [{"current_key": "mock_api_key_here"}]}]}' > app/google-services.json
           fi
 
-          echo "🚀 4. تشغيل بناء الـ APK..."
+          echo "🚀 5. بدء بناء نسخة الـ APK النهائية والمصلحة بالكامل..."
           ./gradlew assembleDebug --no-daemon
 
-      # 5. استخراج ملف الـ APK النهائي للتحميل والتثبيت
+      # 5. استخراج الـ APK الجديد
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
