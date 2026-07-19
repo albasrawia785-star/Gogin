@@ -26,7 +26,7 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. معالجة وحقن الأكواد وبناء الـ APK
+      # 4. معالجة وتأمين الأكواد للطباعة المباشرة وبناء الـ APK
       - name: Fix Printer and Build APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
@@ -43,30 +43,29 @@ jobs:
           mkdir -p app/src/main/java/com/example/data
           echo -e "package com.example.data\nimport kotlinx.coroutines.flow.Flow\nclass POSRepository(private val posDao: POSDao) {\n val allCategories: Flow<List<Category>> = posDao.getAllCategories()\n val allProducts: Flow<List<Product>> = posDao.getAllProducts()\n val allInvoices: Flow<List<Invoice>> = posDao.getAllInvoices()\n val allShiftLogs: Flow<List<ShiftLog>> = posDao.getAllShiftLogs()\n val allInvoiceItems: Flow<List<InvoiceItem>> = posDao.getAllInvoiceItems()\n suspend fun prepopulateIfEmpty() {}\n suspend fun createInvoice(invoice: Invoice, items: List<InvoiceItem>): Long { val id = posDao.insertInvoice(invoice); items.forEach { posDao.insertInvoiceItem(it.copy(invoiceNumber = id)) }; return id }\n suspend fun insertCategory(category: Category) = posDao.insertCategory(category)\n suspend fun updateCategory(category: Category) = posDao.updateCategory(category)\n suspend fun deleteCategory(category: Category) = posDao.deleteCategory(category)\n suspend fun insertProduct(product: Product) = posDao.insertProduct(product)\n suspend fun updateProduct(product: Product) = posDao.updateProduct(product)\n suspend fun deleteProduct(product: Product) = posDao.deleteProduct(product)\n suspend fun insertShiftLog(shiftLog: ShiftLog) = posDao.insertShiftLog(shiftLog)\n suspend fun updateShiftLog(shiftLog: ShiftLog) = posDao.updateShiftLog(shiftLog)\n suspend fun deleteShiftLog(shiftLog: ShiftLog) = posDao.deleteShiftLog(shiftLog)\n suspend fun deleteInvoice(invoice: Invoice) { posDao.deleteInvoice(invoice); posDao.deleteInvoiceItemsByInvoiceNo(invoice.invoiceNumber) }\n suspend fun clearAllData() { posDao.clearCategories(); posDao.clearProducts(); posDao.clearInvoices(); posDao.clearInvoiceItems(); posDao.clearShiftLogs() }\n}" > app/src/main/java/com/example/data/POSRepository.kt
 
-          echo "🛠️ 2. تنظيف وحقن صلاحيات البلوتوث بأمان قبل وسم المانيفست أو الأبليكيشن..."
+          echo "🛠️ 2. حقن صلاحيات البلوتوث والموقع داخل المانيفست بصيغة مستقرة..."
           MANIFEST_PATH="app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_PATH" ]; then
-            # تطهير الملف من أي محاولات حقن سابقة قد تكون سببت تكراراً
             sed -i '/android.permission.BLUETOOTH/d' "$MANIFEST_PATH"
             sed -i '/android.permission.ACCESS_FINE_LOCATION/d' "$MANIFEST_PATH"
             sed -i '/android.permission.ACCESS_COARSE_LOCATION/d' "$MANIFEST_PATH"
             
-            # استخدام perl لاستبدال دقيق يضع الصلاحيات قبل وسم <application> مباشرة لضمان سلامة الـ XML
             perl -i -pe 's/(<application)/    <uses-permission android:name="android.permission.BLUETOOTH" \/>\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" \/>\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" \/>\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" \/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" \/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" \/>\n    $1/' "$MANIFEST_PATH"
-            echo "✅ تم حقن الصلاحيات بشكل متوافق هندسياً!"
+            echo "✅ تم حقن الصلاحيات بنجاح!"
           fi
 
-          echo "🛠️ 3. تأمين كود البلوتوث لمنع كراش الأسماء الفارغة ودعم كافة الطابعات القريبة..."
+          echo "🛠️ 3. تأمين كود البلوتوث لمنع كراش الأسماء الفارغة ودعم كافة الطابعات..."
           PRINTER_SERVICE_PATH=$(find app/src/main/java -name "BluetoothPrinterService.kt")
           if [ -n "$PRINTER_SERVICE_PATH" ]; then
             sed -i 's/if (rssi >= -65)/if (rssi >= -120)/g' "$PRINTER_SERVICE_PATH"
             sed -i 's/if (!device.name.isNullOrEmpty())/if (device != null \&\& !device.name.isNullOrEmpty())/g' "$PRINTER_SERVICE_PATH"
-            echo "✅ تم تأمين ملف البلوتوث!"
+            echo "✅ تم تأمين ملف البلوتوث وبدء معالجة فلاتر البحث!"
           fi
           
-          echo "🛠️ 4. إلغاء واجهة الـ PDF ونظام الـ PrintManager لتمكين الطباعة المباشرة الصامتة..."
-          find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/getSystemService(Context.PRINT_SERVICE)/null/g' 2>/dev/null || true
-          find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/PrintManager/Unit/g' 2>/dev/null || true
+          echo "🛠️ 4. إلغاء استدعاء واجهة نظام الـ PDF الافتراضية بشكل آمن دون كسر الكود..."
+          # استبدال سطر استدعاء الطباعة الفعلي لمنع فتح واجهة حفظ PDF واستبداله بـ return لمنع الكراش والتعارض
+          find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/printManager\.print(/return \/\/ printManager.print(/g' 2>/dev/null || true
+          echo "✅ تم تعطيل واجهة الـ PDF الافتراضية بنجاح آمن!"
           
           echo "🚀 5. توليد بيئة البناء والتوقيع وبدء الـ Compile لنسخة الـ APK..."
           gradle wrapper
@@ -77,7 +76,7 @@ jobs:
           fi
           ./gradlew assembleDebug --no-daemon
 
-      # 5. استخراج ملف الـ APK النهائي للتحميل
+      # 5. استخراج ملف الـ APK النهائي للتحميل والتثبيت
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
