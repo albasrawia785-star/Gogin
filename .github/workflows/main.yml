@@ -59,13 +59,13 @@ jobs:
           if [ -n "$PRINTER_SERVICE_PATH" ]; then
             sed -i 's/if (rssi >= -65)/if (rssi >= -120)/g' "$PRINTER_SERVICE_PATH"
             sed -i 's/if (!device.name.isNullOrEmpty())/if (device != null \&\& !device.name.isNullOrEmpty())/g' "$PRINTER_SERVICE_PATH"
-            echo "✅ تم تأمين ملف البلوتوث وبدء معالجة فلاتر البحث!"
+            echo "✅ تم تأمين ملف البلوتوث!"
           fi
           
-          echo "🛠️ 4. إلغاء استدعاء واجهة نظام الـ PDF الافتراضية بشكل آمن دون كسر الكود..."
-          # استبدال سطر استدعاء الطباعة الفعلي لمنع فتح واجهة حفظ PDF واستبداله بـ return لمنع الكراش والتعارض
-          find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/printManager\.print(/return \/\/ printManager.print(/g' 2>/dev/null || true
-          echo "✅ تم تعطيل واجهة الـ PDF الافتراضية بنجاح آمن!"
+          echo "🛠️ 4. تحويل سطر استدعاء واجهة الـ PDF الافتراضية إلى تعليق (Comment) صامت..."
+          # تحويل سطر استدعاء الطباعة إلى تعليق باستخدام // ليتجاهله المترجم بأمان كامل دون كسر البنية
+          find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/printManager\.print(/\/\/ printManager.print(/g' 2>/dev/null || true
+          echo "✅ تم تصفير وتعطيل واجهة الـ PDF الافتراضية بشكل صامت!"
           
           echo "🚀 5. توليد بيئة البناء والتوقيع وبدء الـ Compile لنسخة الـ APK..."
           gradle wrapper
