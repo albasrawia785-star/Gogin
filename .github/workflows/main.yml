@@ -11,28 +11,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. سحب الكود من المستودع (Repository)
+      # 1. سحب الكود من المستودع
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. إعداد بيئة جافا (JDK 17) المتوافقة مع مشروعك
+      # 2. إعداد بيئة جافا
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'zulu'
 
-      # 3. فك ضغط ملف المشروع مهما كان اسمه (حروف صغيرة أو كبيرة)
+      # 3. فك ضغط ملف المشروع
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. معالجة وحقن الأكواد المفقودة، تأمين البلوتوث، وبناء الـ APK
+      # 4. معالجة وحقن الأكواد المفقودة وبناء الـ APK
       - name: Fix Code, Printers and Build APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
         run: |
-          # البحث الديناميكي عن مجلد المشروع الرئيسي الذي يحتوي على الإعدادات
           TARGET_DIR=$(find project_dir -name "settings.gradle.kts" -exec dirname {} \;)
           if [ -z "$TARGET_DIR" ]; then
             echo "❌ خطأ: لم يتم العثور على ملفات مشروع أندرويد!"
@@ -42,115 +41,116 @@ jobs:
           
           echo "🛠️ 1. إنشاء وإصلاح ملف الكلاس المفقود POSRepository.kt..."
           mkdir -p app/src/main/java/com/example/data
-          cat << 'EOF' > app/src/main/java/com/example/data/POSRepository.kt
-          package com.example.data
-
-          import kotlinx.coroutines.flow.Flow
-
-          class POSRepository(private val posDao: POSDao) {
-              val allCategories: Flow<List<Category>> = posDao.getAllCategories()
-              val allProducts: Flow<List<Product>> = posDao.getAllProducts()
-              val allInvoices: Flow<List<Invoice>> = posDao.getAllInvoices()
-              val allShiftLogs: Flow<List<ShiftLog>> = posDao.getAllShiftLogs()
-              val allInvoiceItems: Flow<List<InvoiceItem>> = posDao.getAllInvoiceItems()
-
-              suspend fun prepopulateIfEmpty() {}
-
-              suspend fun createInvoice(invoice: Invoice, items: List<InvoiceItem>): Long {
-                  val id = posDao.insertInvoice(invoice)
-                  items.forEach { posDao.insertInvoiceItem(it.copy(invoiceNumber = id)) }
-                  return id
-              }
-
-              suspend fun insertCategory(category: Category) = posDao.insertCategory(category)
-              suspend fun updateCategory(category: Category) = posDao.updateCategory(category)
-              suspend fun deleteCategory(category: Category) = posDao.deleteCategory(category)
-
-              suspend fun insertProduct(product: Product) = posDao.insertProduct(product)
-              suspend fun updateProduct(product: Product) = posDao.updateProduct(product)
-              suspend fun deleteProduct(product: Product) = posDao.deleteProduct(product)
-
-              suspend fun insertShiftLog(shiftLog: ShiftLog) = posDao.insertShiftLog(shiftLog)
-              suspend fun updateShiftLog(shiftLog: ShiftLog) = posDao.updateShiftLog(shiftLog)
-              suspend fun deleteShiftLog(shiftLog: ShiftLog) = posDao.deleteShiftLog(shiftLog)
-
-              suspend fun deleteInvoice(invoice: Invoice) {
-                  posDao.deleteInvoice(invoice)
-                  posDao.deleteInvoiceItemsByInvoiceNo(invoice.invoiceNumber)
-              }
-
-              suspend fun clearAllData() {
-                  posDao.clearCategories()
-                  posDao.clearProducts()
-                  posDao.clearInvoices()
-                  posDao.clearInvoiceItems()
-                  posDao.clearShiftLogs()
-              }
-          }
-          EOF
           
-          echo "🛠️ 2. إعادة صياغة ملف البلوتوث بالكامل لدعم كافة الطابعات ومنع الكراش..."
+cat << 'EOF' > app/src/main/java/com/example/data/POSRepository.kt
+package com.example.data
+
+import kotlinx.coroutines.flow.Flow
+
+class POSRepository(private val posDao: POSDao) {
+    val allCategories: Flow<List<Category>> = posDao.getAllCategories()
+    val allProducts: Flow<List<Product>> = posDao.getAllProducts()
+    val allInvoices: Flow<List<Invoice>> = posDao.getAllInvoices()
+    val allShiftLogs: Flow<List<ShiftLog>> = posDao.getAllShiftLogs()
+    val allInvoiceItems: Flow<List<InvoiceItem>> = posDao.getAllInvoiceItems()
+
+    suspend fun prepopulateIfEmpty() {}
+
+    suspend fun createInvoice(invoice: Invoice, items: List<InvoiceItem>): Long {
+        val id = posDao.insertInvoice(invoice)
+        items.forEach { posDao.insertInvoiceItem(it.copy(invoiceNumber = id)) }
+        return id
+    }
+
+    suspend fun insertCategory(category: Category) = posDao.insertCategory(category)
+    suspend fun updateCategory(category: Category) = posDao.updateCategory(category)
+    suspend fun deleteCategory(category: Category) = posDao.deleteCategory(category)
+
+    suspend fun insertProduct(product: Product) = posDao.insertProduct(product)
+    suspend fun updateProduct(product: Product) = posDao.updateProduct(product)
+    suspend fun deleteProduct(product: Product) = posDao.deleteProduct(product)
+
+    suspend fun insertShiftLog(shiftLog: ShiftLog) = posDao.insertShiftLog(shiftLog)
+    suspend fun updateShiftLog(shiftLog: ShiftLog) = posDao.updateShiftLog(shiftLog)
+    suspend fun deleteShiftLog(shiftLog: ShiftLog) = posDao.deleteShiftLog(shiftLog)
+
+    suspend fun deleteInvoice(invoice: Invoice) {
+        posDao.deleteInvoice(invoice)
+        posDao.deleteInvoiceItemsByInvoiceNo(invoice.invoiceNumber)
+    }
+
+    suspend fun clearAllData() {
+        posDao.clearCategories()
+        posDao.clearProducts()
+        posDao.clearInvoices()
+        posDao.clearInvoiceItems()
+        posDao.clearShiftLogs()
+    }
+}
+EOF
+          
+          echo "🛠️ 2. إعادة صياغة ملف البلوتوث بالكامل..."
           PRINTER_SERVICE_PATH=$(find app/src/main/java -name "BluetoothPrinterService.kt")
           if [ -n "$PRINTER_SERVICE_PATH" ]; then
-            cat << 'EOF' > "$PRINTER_SERVICE_PATH"
-            package com.example.utils
+            
+cat << 'EOF' > "$PRINTER_SERVICE_PATH"
+package com.example.utils
 
-            import android.annotation.SuppressLint
-            import android.bluetooth.BluetoothAdapter
-            import android.bluetooth.BluetoothDevice
-            import android.bluetooth.BluetoothManager
-            import android.content.BroadcastReceiver
-            import android.content.Context
-            import android.content.Intent
-            import android.content.IntentFilter
-            import kotlinx.coroutines.flow.MutableStateFlow
-            import kotlinx.coroutines.flow.StateFlow
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
-            @SuppressLint("MissingPermission")
-            class BluetoothPrinterService(private val context: Context) {
-                private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-                private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
+@SuppressLint("MissingPermission")
+class BluetoothPrinterService(private val context: Context) {
+    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
 
-                private val _discoveredDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
-                val discoveredDevices: StateFlow<List<BluetoothDevice>> = _discoveredDevices
+    private val _discoveredDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
+    val discoveredDevices: StateFlow<List<BluetoothDevice>> = _discoveredDevices
 
-                private val receiver = object : BroadcastReceiver() {
-                    override fun onReceive(context: Context, intent: Intent) {
-                        when (intent.action) {
-                            BluetoothDevice.ACTION_FOUND -> {
-                                val device: BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-                                device?.let {
-                                    // حماية برمجية لمنع الـ NullPointerمن الأجهزة التي بلا اسم والتي تسبب كراش
-                                    if (!it.name.isNullOrEmpty() && !_discoveredDevices.value.contains(it)) {
-                                        _discoveredDevices.value = _discoveredDevices.value + it
-                                    }
-                                }
-                            }
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                BluetoothDevice.ACTION_FOUND -> {
+                    val device: BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    device?.let {
+                        if (!it.name.isNullOrEmpty() && !_discoveredDevices.value.contains(it)) {
+                            _discoveredDevices.value = _discoveredDevices.value + it
                         }
                     }
                 }
-
-                fun startDiscovery() {
-                    _discoveredDevices.value = emptyList()
-                    val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
-                    context.registerReceiver(receiver, filter)
-                    bluetoothAdapter?.startDiscovery()
-                }
-
-                fun stopDiscovery() {
-                    try {
-                        context.unregisterReceiver(receiver)
-                    } catch (e: Exception) { }
-                    bluetoothAdapter?.cancelDiscovery()
-                }
             }
-            EOF
-            echo "✅ تم تحديث وتأمين كود خدمة البلوتوث بنجاح!"
+        }
+    }
+
+    fun startDiscovery() {
+        _discoveredDevices.value = emptyList()
+        val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
+        context.registerReceiver(receiver, filter)
+        bluetoothAdapter?.startDiscovery()
+    }
+
+    fun stopDiscovery() {
+        try {
+            context.unregisterReceiver(receiver)
+        } catch (e: Exception) { }
+        bluetoothAdapter?.cancelDiscovery()
+    }
+}
+EOF
+            echo "✅ تم تحديث كود خدمة البلوتوث!"
           else
-            echo "⚠️ تنبيه: لم يتم العثور على مسار كود البلوتوث لاستبداله!"
+            echo "⚠️ تنبيه: لم يتم العثور على ملف البلوتوث لاستبداله!"
           fi
           
-          echo "🛠️ 3. توليد الـ Gradle Wrapper وتجهيز التوقيع وخدمات جوجل..."
+          echo "🛠️ 3. توليد الـ Gradle وتجهيز التوقيع..."
           gradle wrapper
           chmod +x gradlew
           
@@ -160,10 +160,10 @@ jobs:
             echo '{"project_info": {"project_number": "123456789", "project_id": "casher-mock-id"}, "client": [{"client_info": {"mobilesdk_app_id": "1:123456789:android:123456", "android_client_info": {"package_name": "com.aistudio.restaurantpos.vmdjqk"}}, "api_key": [{"current_key": "mock_api_key_here"}]}]}' > app/google-services.json
           fi
 
-          echo "🚀 4. تشغيل أمر البناء الفعلي للـ APK بالوضع الصامت..."
+          echo "🚀 4. تشغيل أمر البناء للـ APK..."
           ./gradlew assembleDebug --no-daemon -Djava.awt.headless=true
 
-      # 5. رفع واستخراج ملف الـ APK النهائي لتقوم بتحميله مباشرة من الـ Actions
+      # 5. استخراج ملف الـ APK النهائي
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
