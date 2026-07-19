@@ -26,8 +26,8 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. إصلاح الصلاحيات والطباعة وبناء التطبيق
-      - name: Fix Printer Permissions and Build APK
+      # 4. معالجة وحقن الأكواد وبناء الـ APK
+      - name: Fix Printer and Build APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
@@ -43,17 +43,17 @@ jobs:
           mkdir -p app/src/main/java/com/example/data
           echo -e "package com.example.data\nimport kotlinx.coroutines.flow.Flow\nclass POSRepository(private val posDao: POSDao) {\n val allCategories: Flow<List<Category>> = posDao.getAllCategories()\n val allProducts: Flow<List<Product>> = posDao.getAllProducts()\n val allInvoices: Flow<List<Invoice>> = posDao.getAllInvoices()\n val allShiftLogs: Flow<List<ShiftLog>> = posDao.getAllShiftLogs()\n val allInvoiceItems: Flow<List<InvoiceItem>> = posDao.getAllInvoiceItems()\n suspend fun prepopulateIfEmpty() {}\n suspend fun createInvoice(invoice: Invoice, items: List<InvoiceItem>): Long { val id = posDao.insertInvoice(invoice); items.forEach { posDao.insertInvoiceItem(it.copy(invoiceNumber = id)) }; return id }\n suspend fun insertCategory(category: Category) = posDao.insertCategory(category)\n suspend fun updateCategory(category: Category) = posDao.updateCategory(category)\n suspend fun deleteCategory(category: Category) = posDao.deleteCategory(category)\n suspend fun insertProduct(product: Product) = posDao.insertProduct(product)\n suspend fun updateProduct(product: Product) = posDao.updateProduct(product)\n suspend fun deleteProduct(product: Product) = posDao.deleteProduct(product)\n suspend fun insertShiftLog(shiftLog: ShiftLog) = posDao.insertShiftLog(shiftLog)\n suspend fun updateShiftLog(shiftLog: ShiftLog) = posDao.updateShiftLog(shiftLog)\n suspend fun deleteShiftLog(shiftLog: ShiftLog) = posDao.deleteShiftLog(shiftLog)\n suspend fun deleteInvoice(invoice: Invoice) { posDao.deleteInvoice(invoice); posDao.deleteInvoiceItemsByInvoiceNo(invoice.invoiceNumber) }\n suspend fun clearAllData() { posDao.clearCategories(); posDao.clearProducts(); posDao.clearInvoices(); posDao.clearInvoiceItems(); posDao.clearShiftLogs() }\n}" > app/src/main/java/com/example/data/POSRepository.kt
 
-          echo "🛠️ 2. حقن صلاحيات البلوتوث والموقع داخل المانيفست بصيغة متوافقة ومستقرة..."
+          echo "🛠️ 2. تنظيف وحقن صلاحيات البلوتوث بأمان قبل وسم المانيفست أو الأبليكيشن..."
           MANIFEST_PATH="app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_PATH" ]; then
-            # إزالة أي تكرار قديم للصلاحيات تم حقنه لمنع التعارض
+            # تطهير الملف من أي محاولات حقن سابقة قد تكون سببت تكراراً
             sed -i '/android.permission.BLUETOOTH/d' "$MANIFEST_PATH"
             sed -i '/android.permission.ACCESS_FINE_LOCATION/d' "$MANIFEST_PATH"
             sed -i '/android.permission.ACCESS_COARSE_LOCATION/d' "$MANIFEST_PATH"
             
-            # حقن الأسطر بشكل صريح أسفل وسم المانيفست مباشرة وبصيغة سليمة هندسياً
-            sed -i '/<manifest/a \    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />' "$MANIFEST_PATH"
-            echo "✅ تم إدخال الصلاحيات وتطهير ملف المانيفست بنجاح!"
+            # استخدام perl لاستبدال دقيق يضع الصلاحيات قبل وسم <application> مباشرة لضمان سلامة الـ XML
+            perl -i -pe 's/(<application)/    <uses-permission android:name="android.permission.BLUETOOTH" \/>\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" \/>\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" \/>\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" \/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" \/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" \/>\n    $1/' "$MANIFEST_PATH"
+            echo "✅ تم حقن الصلاحيات بشكل متوافق هندسياً!"
           fi
 
           echo "🛠️ 3. تأمين كود البلوتوث لمنع كراش الأسماء الفارغة ودعم كافة الطابعات القريبة..."
@@ -61,14 +61,14 @@ jobs:
           if [ -n "$PRINTER_SERVICE_PATH" ]; then
             sed -i 's/if (rssi >= -65)/if (rssi >= -120)/g' "$PRINTER_SERVICE_PATH"
             sed -i 's/if (!device.name.isNullOrEmpty())/if (device != null \&\& !device.name.isNullOrEmpty())/g' "$PRINTER_SERVICE_PATH"
-            echo "✅ تم إصلاح كود البحث عن البلوتوث!"
+            echo "✅ تم تأمين ملف البلوتوث!"
           fi
           
-          echo "🛠️ 4. إلغاء واجهة الـ PDF ونظام الـ PrintManager تماماً لتمكين الطباعة المباشرة..."
+          echo "🛠️ 4. إلغاء واجهة الـ PDF ونظام الـ PrintManager لتمكين الطباعة المباشرة الصامتة..."
           find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/getSystemService(Context.PRINT_SERVICE)/null/g' 2>/dev/null || true
           find app/src/main/java -type f -name "*.kt" | xargs sed -i 's/PrintManager/Unit/g' 2>/dev/null || true
           
-          echo "🚀 5. إعداد التوقيع وبناء نسخة الـ APK النهائية..."
+          echo "🚀 5. توليد بيئة البناء والتوقيع وبدء الـ Compile لنسخة الـ APK..."
           gradle wrapper
           chmod +x gradlew
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
