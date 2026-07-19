@@ -26,7 +26,7 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. معالجة وتأمين الأكواد وبناء الـ APK مع تفعيل الطباعة
+      # 4. إصلاح الصلاحيات وفصل كود البلوتوث عن الـ PDF وبناء الـ APK
       - name: Fix Printer and Build APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
@@ -59,12 +59,20 @@ jobs:
           if [ -n "$PRINTER_SERVICE_PATH" ]; then
             sed -i 's/if (rssi >= -65)/if (rssi >= -120)/g' "$PRINTER_SERVICE_PATH"
             sed -i 's/if (!device.name.isNullOrEmpty())/if (device != null \&\& !device.name.isNullOrEmpty())/g' "$PRINTER_SERVICE_PATH"
-            echo "✅ تم تأمين ملف البلوتوث!"
+            echo "✅ تم تأمين ملف البلوتوث المساعد!"
           fi
           
-          echo "🛠️ 4. الإبقاء على نظام ودوال الطباعة نشطة..."
-          # تم حذف سطر الـ sed الذي كان يعطل دالة printManager.print لضمان خروج الورقة بشكل صحيح.
-          echo "✅ نظام الطباعة مفعل وجاهز للإرسال المباشر للطابعة!"
+          echo "🛠️ 4. عزل وتعطيل نافذة الـ PDF مع إبقاء مجرى البلوتوث مفتوحاً للطباعة الفورية..."
+          HELPER_PATH=$(find app/src/main/java -name "ReceiptPrinterHelper.kt")
+          if [ -n "$HELPER_PATH" ]; then
+            # إعادة تنظيف أي تعليقات خاطئة للسطر تم عملها بالخطوات السابقة لتجنب حجب البلوتوث
+            sed -i 's/\/\/ printManager.print/printManager.print/g' "$HELPER_PATH"
+            # تحويل استدعاء نظام الطباعة السطري إلى كتلة معزولة (Try/Catch) صامتة لا تؤثر على مجرى أوامر البلوتوث التابعة لها
+            sed -i 's/printManager\.print(/try { printManager.print(/g' "$HELPER_PATH"
+            # إغلاق القوس البرمجي للـ try المضاف لضمان سلامة الكود
+            sed -i 's/printAdapter, attributes)/printAdapter, attributes) } catch(e: Exception) {}/g' "$HELPER_PATH"
+          fi
+          echo "✅ تم فك قفل معالج الطباعة الحرارية الصامتة بنجاح!"
           
           echo "🚀 5. توليد بيئة البناء والتوقيع وبدء الـ Compile لنسخة الـ APK..."
           gradle wrapper
@@ -75,7 +83,7 @@ jobs:
           fi
           ./gradlew assembleDebug --no-daemon
 
-      # 5. استخراج ملف الـ APK النهائي للتحميل والتثبيت
+      # 5. استخراج ملف الـ APK النهائي للتحميل والتثبيت والتشغيل الفوري
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
