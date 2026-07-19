@@ -26,8 +26,8 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. معالجة وحقن الأكواد المفقودة وبناء الـ APK
-      - name: Fix Code, Printers and Build APK
+      # 4. إصلاح الأكواد بشكل سطرى لمنع أخطاء التنسيق وبناء الـ APK
+      - name: Configure and Build APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
@@ -39,118 +39,21 @@ jobs:
           fi
           cd "$TARGET_DIR"
           
-          echo "🛠️ 1. إنشاء وإصلاح ملف الكلاس المفقود POSRepository.kt..."
+          echo "🛠️ 1. إصلاح وإنشاء كلاس الـ POSRepository المفقود..."
           mkdir -p app/src/main/java/com/example/data
+          echo -e "package com.example.data\nimport kotlinx.coroutines.flow.Flow\nclass POSRepository(private val posDao: POSDao) {\n val allCategories: Flow<List<Category>> = posDao.getAllCategories()\n val allProducts: Flow<List<Product>> = posDao.getAllProducts()\n val allInvoices: Flow<List<Invoice>> = posDao.getAllInvoices()\n val allShiftLogs: Flow<List<ShiftLog>> = posDao.getAllShiftLogs()\n val allInvoiceItems: Flow<List<InvoiceItem>> = posDao.getAllInvoiceItems()\n suspend fun prepopulateIfEmpty() {}\n suspend fun createInvoice(invoice: Invoice, items: List<InvoiceItem>): Long { val id = posDao.insertInvoice(invoice); items.forEach { posDao.insertInvoiceItem(it.copy(invoiceNumber = id)) }; return id }\n suspend fun insertCategory(category: Category) = posDao.insertCategory(category)\n suspend fun updateCategory(category: Category) = posDao.updateCategory(category)\n suspend fun deleteCategory(category: Category) = posDao.deleteCategory(category)\n suspend fun insertProduct(product: Product) = posDao.insertProduct(product)\n suspend fun updateProduct(product: Product) = posDao.updateProduct(product)\n suspend fun deleteProduct(product: Product) = posDao.deleteProduct(product)\n suspend fun insertShiftLog(shiftLog: ShiftLog) = posDao.insertShiftLog(shiftLog)\n suspend fun updateShiftLog(shiftLog: ShiftLog) = posDao.updateShiftLog(shiftLog)\n suspend fun deleteShiftLog(shiftLog: ShiftLog) = posDao.deleteShiftLog(shiftLog)\n suspend fun deleteInvoice(invoice: Invoice) { posDao.deleteInvoice(invoice); posDao.deleteInvoiceItemsByInvoiceNo(invoice.invoiceNumber) }\n suspend fun clearAllData() { posDao.clearCategories(); posDao.clearProducts(); posDao.clearInvoices(); posDao.clearInvoiceItems(); posDao.clearShiftLogs() }\n}" > app/src/main/java/com/example/data/POSRepository.kt
           
-cat << 'EOF' > app/src/main/java/com/example/data/POSRepository.kt
-package com.example.data
-
-import kotlinx.coroutines.flow.Flow
-
-class POSRepository(private val posDao: POSDao) {
-    val allCategories: Flow<List<Category>> = posDao.getAllCategories()
-    val allProducts: Flow<List<Product>> = posDao.getAllProducts()
-    val allInvoices: Flow<List<Invoice>> = posDao.getAllInvoices()
-    val allShiftLogs: Flow<List<ShiftLog>> = posDao.getAllShiftLogs()
-    val allInvoiceItems: Flow<List<InvoiceItem>> = posDao.getAllInvoiceItems()
-
-    suspend fun prepopulateIfEmpty() {}
-
-    suspend fun createInvoice(invoice: Invoice, items: List<InvoiceItem>): Long {
-        val id = posDao.insertInvoice(invoice)
-        items.forEach { posDao.insertInvoiceItem(it.copy(invoiceNumber = id)) }
-        return id
-    }
-
-    suspend fun insertCategory(category: Category) = posDao.insertCategory(category)
-    suspend fun updateCategory(category: Category) = posDao.updateCategory(category)
-    suspend fun deleteCategory(category: Category) = posDao.deleteCategory(category)
-
-    suspend fun insertProduct(product: Product) = posDao.insertProduct(product)
-    suspend fun updateProduct(product: Product) = posDao.updateProduct(product)
-    suspend fun deleteProduct(product: Product) = posDao.deleteProduct(product)
-
-    suspend fun insertShiftLog(shiftLog: ShiftLog) = posDao.insertShiftLog(shiftLog)
-    suspend fun updateShiftLog(shiftLog: ShiftLog) = posDao.updateShiftLog(shiftLog)
-    suspend fun deleteShiftLog(shiftLog: ShiftLog) = posDao.deleteShiftLog(shiftLog)
-
-    suspend fun deleteInvoice(invoice: Invoice) {
-        posDao.deleteInvoice(invoice)
-        posDao.deleteInvoiceItemsByInvoiceNo(invoice.invoiceNumber)
-    }
-
-    suspend fun clearAllData() {
-        posDao.clearCategories()
-        posDao.clearProducts()
-        posDao.clearInvoices()
-        posDao.clearInvoiceItems()
-        posDao.clearShiftLogs()
-    }
-}
-EOF
-          
-          echo "🛠️ 2. إعادة صياغة ملف البلوتوث بالكامل..."
+          echo "🛠️ 2. تعديل فلتر البلوتوث وتوسيع نطاق البحث لمنع الكراش لدعم كافة الطابعات القريبة..."
           PRINTER_SERVICE_PATH=$(find app/src/main/java -name "BluetoothPrinterService.kt")
           if [ -n "$PRINTER_SERVICE_PATH" ]; then
-            
-cat << 'EOF' > "$PRINTER_SERVICE_PATH"
-package com.example.utils
-
-import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothManager
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-
-@SuppressLint("MissingPermission")
-class BluetoothPrinterService(private val context: Context) {
-    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
-
-    private val _discoveredDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
-    val discoveredDevices: StateFlow<List<BluetoothDevice>> = _discoveredDevices
-
-    private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                BluetoothDevice.ACTION_FOUND -> {
-                    val device: BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-                    device?.let {
-                        if (!it.name.isNullOrEmpty() && !_discoveredDevices.value.contains(it)) {
-                            _discoveredDevices.value = _discoveredDevices.value + it
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fun startDiscovery() {
-        _discoveredDevices.value = emptyList()
-        val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
-        context.registerReceiver(receiver, filter)
-        bluetoothAdapter?.startDiscovery()
-    }
-
-    fun stopDiscovery() {
-        try {
-            context.unregisterReceiver(receiver)
-        } catch (e: Exception) { }
-        bluetoothAdapter?.cancelDiscovery()
-    }
-}
-EOF
-            echo "✅ تم تحديث كود خدمة البلوتوث!"
-          else
-            echo "⚠️ تنبيه: لم يتم العثور على ملف البلوتوث لاستبداله!"
+            # استبدال الفلتر الصارم بفلتر يقبل أي جهاز طابعة قريبة بإشارة واسعة المدى
+            sed -i 's/if (rssi >= -65)/if (rssi >= -120)/g' "$PRINTER_SERVICE_PATH"
+            # حماية برمجية للتأكد من عدم كراش الأسماء الفارغة
+            sed -i 's/if (!device.name.isNullOrEmpty())/if (device != null \&\& !device.name.isNullOrEmpty())/g' "$PRINTER_SERVICE_PATH"
+            echo "✅ تم تعديل كود البلوتوث بنجاح السطري!"
           fi
           
-          echo "🛠️ 3. توليد الـ Gradle وتجهيز التوقيع..."
+          echo "🛠️ 3. تجهيز التوقيع وملف الخدمات الافتراضي لجوجل..."
           gradle wrapper
           chmod +x gradlew
           
@@ -160,10 +63,10 @@ EOF
             echo '{"project_info": {"project_number": "123456789", "project_id": "casher-mock-id"}, "client": [{"client_info": {"mobilesdk_app_id": "1:123456789:android:123456", "android_client_info": {"package_name": "com.aistudio.restaurantpos.vmdjqk"}}, "api_key": [{"current_key": "mock_api_key_here"}]}]}' > app/google-services.json
           fi
 
-          echo "🚀 4. تشغيل أمر البناء للـ APK..."
-          ./gradlew assembleDebug --no-daemon -Djava.awt.headless=true
+          echo "🚀 4. تشغيل بناء الـ APK..."
+          ./gradlew assembleDebug --no-daemon
 
-      # 5. استخراج ملف الـ APK النهائي
+      # 5. استخراج ملف الـ APK النهائي للتحميل والتثبيت
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
