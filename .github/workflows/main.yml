@@ -12,7 +12,7 @@ jobs:
       contents: write
 
     steps:
-      # 1. سحب الكود الرئيسي للمستودع مع تجاوز مشاكل SSL
+      # 1. سحب الكود الرئيسي للمستودع مع تجاوز مشكلات SSL المؤقتة
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
@@ -36,12 +36,11 @@ jobs:
           unzip "$ZIP_NAME" -d project_dir
           rm "$ZIP_NAME"
 
-      # 4. الإصلاح الذكي التلقائي لمنع تعارضات Compose و Kotlin
+      # 4. إصلاح تلقائي لمنع تعارضات Compose Compiler و Kotlin
       - name: Smart Patch Gradle Files
         run: |
           cd project_dir
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
-          ./gradlew wrapper --gradle-version 8.7 --distribution-type bin || true
         continue-on-error: true
 
       # 5. بناء نسخة الـ Debug واستخراج مفاتيح التوقيع و SHA-1 لـ Firebase
@@ -57,7 +56,11 @@ jobs:
           fi
           cd "$TARGET_DIR"
 
-          echo "🛠️ 1. تجهيز الـ Gradle Wrapper وتصاريح التشغيل..."
+          echo "🛠️ 1. التحقق من وجود Gradle Wrapper وتجهيزه..."
+          if [ ! -f "gradlew" ]; then
+            echo "⚠️ ملف gradlew غير موجود بالمشروع، جاري إنشاؤه تلقائياً..."
+            gradle wrapper
+          fi
           chmod +x gradlew
 
           echo "🔑 2. إنشاء ملف debug.keystore الموحد للتوقيع..."
