@@ -43,17 +43,24 @@ jobs:
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
         continue-on-error: true
 
-      # 5. بناء نسخة الـ Debug واستخراج مفاتيح التوقيع و SHA-1 لـ Firebase
+      # 5. تحديد المسار والبناء الآمن
       - name: Build Debug APK & Extract SHA-1
         env:
           _JAVA_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
         run: |
-          TARGET_DIR=$(find project_dir -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1 | xargs dirname)
-          if [ -z "$TARGET_DIR" ]; then
-            echo "❌ خطأ: لم يتم العثور على ملفات مشروع أندرويد!"
+          # البحث الذكي والآمن عن مجلد المشروع الرئيسي
+          SETTINGS_FILE=$(find project_dir \( -name "settings.gradle.kts" -o -name "settings.gradle" -o -name "build.gradle.kts" -o -name "build.gradle" \) -print -quit)
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "❌ خطأ: لم يتم العثور على أي ملفات بناء لأندرويد داخل الملف المضغوط!"
+            echo "📁 محتويات المجلد المضغوط:"
+            ls -la project_dir
             exit 1
           fi
+
+          TARGET_DIR=$(dirname "$SETTINGS_FILE")
+          echo "📂 تم العثور على مسار المشروع: $TARGET_DIR"
           cd "$TARGET_DIR"
 
           echo "🛠️ 1. التحقق من وجود Gradle Wrapper وتجهيزه..."
