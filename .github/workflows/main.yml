@@ -1,4 +1,4 @@
-name: Build Debug Android APK with Firebase
+name: Build Debug Android APK with Direct Release
 
 on:
   repository_dispatch:
@@ -8,8 +8,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
-      # 1. سحب الكود من المستودع
+      # 1. سحب الكود
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -20,31 +23,29 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
-      # 3. فك ضغط ملف المشروع الخاص بالمستخدم الفريد وحذفه فوراً
+      # 3. فك ضغط ملف المشروع الفريد
       - name: Unzip project files
         run: |
           ZIP_NAME="project_${{ github.event.client_payload.build_id }}.zip"
           unzip "$ZIP_NAME" -d project_dir
           rm "$ZIP_NAME"
 
-      # 4. بناء نسخة الـ Debug APK
-      - name: Build Debug APK & Extract SHA-1
+      # 4. بناء الـ Debug APK
+      - name: Build Debug APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
         run: |
           TARGET_DIR=$(find project_dir -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1 | xargs dirname)
           if [ -z "$TARGET_DIR" ]; then
-            echo "❌ خطأ: لم يتم العثور على ملفات مشروع أندرويد!"
+            echo "❌ لم يتم العثور على ملفات المشروع"
             exit 1
           fi
           cd "$TARGET_DIR"
           
-          echo "🛠️ 1. تجهيز الـ Gradle Wrapper وتصاريح التشغيل..."
           gradle wrapper
           chmod +x gradlew
 
-          echo "🔑 2. إنشاء ملف debug.keystore المطلوب للتوقيع..."
           keytool -genkey -v -keystore debug.keystore \
             -alias androiddebugkey \
             -keyalg RSA -keysize 2048 -validity 10000 \
@@ -52,31 +53,27 @@ jobs:
             -keypass "android" \
             -dname "CN=Android Debug, O=Android, C=US"
 
-          echo "🔍 3. التحقق من ملف google-services.json..."
-          if [ ! -f "app/google-services.json" ]; then
-            echo "⚠️ تنبيه: ملف google-services.json غير موجود داخل app/."
-          fi
-
-          echo "🚀 4. تنفيذ بناء نسخة الـ Debug..."
           ./gradlew assembleDebug --no-daemon
 
-          echo "🔑 5. استخراج بصمة SHA-1..."
-          ./gradlew signingReport --no-daemon | grep -E "Variant: debug|SHA1:" || true
+          # تجهيز الملف بنسخه وتسميته
+          APK_FILE=$(find . -name "*.apk" | head -n 1)
+          cp "$APK_FILE" "$GITHUB_WORKSPACE/app-debug-${{ github.event.client_payload.build_id }}.apk"
 
-          echo "✅ تم البناء بنجاح!"
-
-      # 5. رفع ملف الـ Debug APK النهائي وتسميته برقم بناء المستخدم
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
+      # 5. رفع الـ APK كـ Release مباشر قابل للتحميل
+      - name: Create Direct Download Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: apk-${{ github.event.client_payload.build_id }}
-          path: project_dir/**/build/outputs/apk/debug/*.apk
+          tag_name: "build-${{ github.event.client_payload.build_id }}"
+          name: "APK Build ${{ github.event.client_payload.build_id }}"
+          files: "app-debug-${{ github.event.client_payload.build_id }}.apk"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 6. تنظيف المستودع تلقائياً بمسح ملفات الـ zip أو المجلدات المؤقتة
+      # 6. التنظيف الآلي للمستودع
       - name: Cleanup Repository
         if: always()
         run: |
-          git config --global user.name "Auto Cleanup Bot"
+          git config --global user.name "Auto Bot"
           git config --global user.email "bot@github.com"
           git rm -rf project_dir || true
           git rm -f "project_${{ github.event.client_payload.build_id }}.zip" || true
