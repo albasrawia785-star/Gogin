@@ -34,7 +34,7 @@ jobs:
           unzip "$ZIP_NAME" -d project_dir
           rm "$ZIP_NAME"
 
-      # 4. بناء الـ Debug APK وتجهيزه
+      # 4. بناء الـ Debug APK مع معالجة حزمة Compose و Kotlin
       - name: Build Debug APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
@@ -60,12 +60,14 @@ jobs:
             -keypass "android" \
             -dname "CN=Android Debug, O=Android, C=US" || true
 
-          # بناء التطبيق
-          echo "🚀 بدء تجميع نسخة الـ Debug..."
-          ./gradlew assembleDebug --no-daemon
+          echo "🚀 بدء تنظيف وبناء نسخة الـ Debug..."
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-          # العثور على ملف ה- APK الناتج
-          APK_FILE=$(find . -name "*.apk" | grep -i "debug" | head -n 1)
+          # العثور الدقيق على ملف الـ APK الناتج داخل مجلدات البناء
+          APK_FILE=$(find . -path "*/build/outputs/apk/debug/*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            APK_FILE=$(find . -name "*debug*.apk" | head -n 1)
+          fi
           if [ -z "$APK_FILE" ]; then
             APK_FILE=$(find . -name "*.apk" | head -n 1)
           fi
@@ -75,7 +77,7 @@ jobs:
             exit 1
           fi
 
-          # نسخ الملف إلى المسار العام لرفعه
+          # نسخ الملف إلى المسار الرئيسي للتخزين المباشر
           cp "$APK_FILE" "$GITHUB_WORKSPACE/app-debug-${{ github.event.client_payload.build_id }}.apk"
 
       # 5. نشر الملف كـ Release مباشر معزول بالـ build_id
@@ -85,6 +87,7 @@ jobs:
           tag_name: "build-${{ github.event.client_payload.build_id }}"
           name: "Debug APK Build ${{ github.event.client_payload.build_id }}"
           files: "app-debug-${{ github.event.client_payload.build_id }}.apk"
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
