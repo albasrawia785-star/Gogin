@@ -1,10 +1,8 @@
 name: Build Debug Android APK with Firebase
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  repository_dispatch:
+    types: [build_apk]
 
 jobs:
   build:
@@ -22,9 +20,12 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
-      # 3. فك ضغط ملف المشروع المرفوع
+      # 3. فك ضغط ملف المشروع الخاص بالمستخدم الفريد وحذفه فوراً
       - name: Unzip project files
-        run: unzip *.zip -d project_dir
+        run: |
+          ZIP_NAME="project_${{ github.event.client_payload.build_id }}.zip"
+          unzip "$ZIP_NAME" -d project_dir
+          rm "$ZIP_NAME"
 
       # 4. بناء نسخة الـ Debug APK
       - name: Build Debug APK & Extract SHA-1
@@ -32,7 +33,7 @@ jobs:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
         run: |
-          TARGET_DIR=$(find project_dir -name "settings.gradle.kts" -exec dirname {} \;)
+          TARGET_DIR=$(find project_dir -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1 | xargs dirname)
           if [ -z "$TARGET_DIR" ]; then
             echo "❌ خطأ: لم يتم العثور على ملفات مشروع أندرويد!"
             exit 1
@@ -64,9 +65,20 @@ jobs:
 
           echo "✅ تم البناء بنجاح!"
 
-      # 5. رفع ملف الـ Debug APK النهائي
+      # 5. رفع ملف الـ Debug APK النهائي وتسميته برقم بناء المستخدم
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: DebtTracker-Debug-APK
+          name: apk-${{ github.event.client_payload.build_id }}
           path: project_dir/**/build/outputs/apk/debug/*.apk
+
+      # 6. تنظيف المستودع تلقائياً بمسح ملفات الـ zip أو المجلدات المؤقتة
+      - name: Cleanup Repository
+        if: always()
+        run: |
+          git config --global user.name "Auto Cleanup Bot"
+          git config --global user.email "bot@github.com"
+          git rm -rf project_dir || true
+          git rm -f "project_${{ github.event.client_payload.build_id }}.zip" || true
+          git commit -m "Auto cleanup build ${{ github.event.client_payload.build_id }}" || true
+          git push || true
