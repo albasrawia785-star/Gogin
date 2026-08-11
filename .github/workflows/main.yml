@@ -1,4 +1,4 @@
-name: Build Debug Android APK
+name: Build Debug Android APK Only
 
 on:
   repository_dispatch:
@@ -12,20 +12,18 @@ jobs:
       contents: write
 
     steps:
-      # 1. سحب الكود الرئيسي مع تفعيل استثناء SSL
+      # 1. سحب الكود
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          sslVerify: false
 
-      # 2. إعداد بيئة جافا (JDK 17)
+      # 2. إعداد JDK 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'zulu'
 
-      # 3. فك ضغط ملف المشروع الخاص بالمستخدم وحذفه
+      # 3. فك ضغط مشروع المستخدم
       - name: Unzip Project
         run: |
           ZIP_NAME="project_${{ github.event.client_payload.build_id }}.zip"
@@ -36,8 +34,8 @@ jobs:
           unzip "$ZIP_NAME" -d project_dir
           rm "$ZIP_NAME"
 
-      # 4. بناء الـ Debug APK وتجهيزه
-      - name: Build Debug APK
+      # 4. بناء الـ Debug APK حصراً
+      - name: Build Debug APK Only
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
@@ -52,6 +50,7 @@ jobs:
           gradle wrapper
           chmod +x gradlew
 
+          # توليد مفتاح Debug للتوقيع الآلي
           keytool -genkey -v -keystore debug.keystore \
             -alias androiddebugkey \
             -keyalg RSA -keysize 2048 -validity 10000 \
@@ -59,40 +58,37 @@ jobs:
             -keypass "android" \
             -dname "CN=Android Debug, O=Android, C=US" || true
 
-          echo "🚀 بدء تجميع نسخة الـ Debug..."
+          echo "🚀 تنفيذ أمر بناء Debug حصراً..."
           ./gradlew assembleDebug --no-daemon
 
+          # استخراج ملف app-debug.apk المباشر
           APK_FILE=$(find . -path "*/build/outputs/apk/debug/*.apk" | head -n 1)
           if [ -z "$APK_FILE" ]; then
             APK_FILE=$(find . -name "*debug*.apk" | head -n 1)
           fi
-          if [ -z "$APK_FILE" ]; then
-            APK_FILE=$(find . -name "*.apk" | head -n 1)
-          fi
 
           if [ -z "$APK_FILE" ]; then
-            echo "❌ فشل العثور على ملف الـ APK الناتج!"
+            echo "❌ لم يتم العثور على ملف Debug APK الناتج!"
             exit 1
           fi
 
+          # نسخ الملف باسم واضح
           cp "$APK_FILE" "$GITHUB_WORKSPACE/app-debug-${{ github.event.client_payload.build_id }}.apk"
 
-      # 5. نشر الملف كـ Release مباشر معزول بالـ build_id
-      - name: Create Release and Upload Debug APK
+      # 5. رفع ملف الـ Debug كـ Release Tag
+      - name: Create Release for Debug APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "build-${{ github.event.client_payload.build_id }}"
           name: "Debug APK Build ${{ github.event.client_payload.build_id }}"
           files: "app-debug-${{ github.event.client_payload.build_id }}.apk"
-          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 6. التنظيف الآلي والآمن لعدم تداخل الطلبات المتزامنة
-      - name: Cleanup Repository
+      # 6. التنظيف الآمن
+      - name: Cleanup
         if: always()
         run: |
-          git config --global http.sslVerify false
           git config --global user.name "Auto Bot"
           git config --global user.email "bot@github.com"
           
