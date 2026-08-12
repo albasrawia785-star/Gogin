@@ -1,4 +1,4 @@
-name: Universal Android Debug APK Builder (Guaranteed Icon Replacer)
+name: Universal Android Debug APK Builder (Complete Production Version)
 
 on:
   repository_dispatch:
@@ -50,21 +50,33 @@ jobs:
           mkdir -p project_dir
           unzip -o "$ZIP_FILE" -d project_dir
 
-      # 4. استبدال أيقونة المشروع الشامل والتلقائي
+      # 4. استبدال أيقونة المشروع الشامل والتلقائي (نسخة معالجة الأيقونات التكيفية الشاملة)
       - name: Smart App Icon Overrider
         run: |
           BUILD_ID="${{ github.event.client_payload.build_id }}"
           
-          # البحث عن أي صورة مرفوعة في جذر المستودع (بناءً على build_id أو أي صورة متوفرة)
-          ICON_FILE=$(find . -maxdepth 1 \( -name "*${BUILD_ID}*.png" -o -name "*${BUILD_ID}*.jpg" -o -name "*.png" -o -name "*.jpg" \) ! -name "app-debug*" | head -n 1)
+          # 1. انتظار وتأكيد وجود صورة الأيقونة في جذر المستودع
+          ICON_FILE=""
+          for i in {1..5}; do
+            ICON_FILE=$(find . -maxdepth 1 \( -name "*${BUILD_ID}*.png" -o -name "*${BUILD_ID}*.jpg" -o -name "*${BUILD_ID}*.jpeg" -o -name "*${BUILD_ID}*.webp" -o -name "icon_*.png" \) ! -name "app-debug*" | head -n 1)
+            if [ -n "$ICON_FILE" ]; then
+              echo "🖼️ تم العثور على الأيقونة المرفوعة: $ICON_FILE"
+              break
+            fi
+            sleep 2
+          done
 
           if [ -n "$ICON_FILE" ]; then
-            echo "🖼️ تم العثور على الأيقونة المرفوعة: $ICON_FILE"
+            echo "🚀 بدء إزالة الأيقونات التكيفية واختراق نظام الـ XML..."
 
-            # 1. حذف كافة ملفات XML التكيفية القديمة التي تسبب ظهور الأيقونة الخضراء الافتراضية
+            # 2. حذف كل مجلدات mipmap-anydpi لضمان عدم قراءة الأيقونات التكيفية (Adaptive Vectors / XML)
+            find project_dir -type d -name "mipmap-anydpi*" -exec rm -rf {} +
+            find project_dir -type d -name "drawable-anydpi*" -exec rm -rf {} +
+            
+            # 3. حذف كافة ملفات XML الخاصة بالأيقونات في أي مجلد داخل المشروع
             find project_dir -type f \( -name "ic_launcher*.xml" -o -name "ic_launcher_round*.xml" \) -exec rm -f {} \;
 
-            # 2. استبدال كل صور الأيقونات في مجلدات mipmap و drawable
+            # 4. استبدال جميع صور الـ PNG القديمة للأيقونات داخل كافة مجلدات mipmap و drawable
             find project_dir -type f \( \
               -name "ic_launcher*.png" -o \
               -name "ic_launcher_round*.png" -o \
@@ -72,27 +84,27 @@ jobs:
               -name "ic_launcher_background*.png" \
             \) -exec cp -f "$ICON_FILE" {} \;
 
-            # 3. في حال لم توجد أيقونة باسم ic_launcher، يتم إنشاؤها تلقائياً في كل مجلدات res/mipmap
+            # 5. زرع الصورة الجديدة كـ ic_launcher.png و ic_launcher_round.png في كل مجلدات mipmap لتغطية المقاسات
             find project_dir -type d -name "mipmap*" | while read -r dir; do
               cp -f "$ICON_FILE" "$dir/ic_launcher.png"
               cp -f "$ICON_FILE" "$dir/ic_launcher_round.png"
             done
 
-            echo "✅ تم استبدال الأيقونة وإعادة توطينها بنجاح!"
+            echo "✅ تم استبدال الأيقونة بنجاح، وحذف المجلدات والملفات التكيفية التعارضية!"
           else
-            echo "⚠️ لم يتم إرفاق أو العثور على صورة للأيقونة، سيتم استخدام أيقونة المشروع الأصلية."
+            echo "⚠️ لم يتم العثور على صورة الأيقونة، سيتم استخدام أيقونة المشروع الأصلية."
           fi
         continue-on-error: true
 
-      # 5. إصلاح تعارضات المكاتب تلقائياً
+      # 5. إصلاح تعارضات المكاتب والنسخ آلياً
       - name: Smart Patch Gradle Files
         run: |
           cd project_dir
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
         continue-on-error: true
 
-      # 6. البناء والتجميع
-      - name: Build Debug APK
+      # 6. البناء والتجميع بـ Gradle المباشر
+      - name: Build Debug APK (Direct Gradle Runner)
         env:
           _JAVA_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
@@ -112,7 +124,7 @@ jobs:
           echo "📂 جذر المشروع المحدد: $ROOT_DIR"
           cd "$ROOT_DIR"
 
-          # توليد keystore للتوقيع
+          # توليد keystore للتوقيع الـ Debug
           keytool -genkey -v -keystore debug.keystore \
             -alias androiddebugkey \
             -keyalg RSA -keysize 2048 -validity 10000 \
@@ -130,6 +142,9 @@ jobs:
             echo "❌ فشل العثور على ملف الـ APK الناتج!"
             exit 1
           fi
+
+          echo "🔑 استخراج بصمة SHA-1..."
+          gradle signingReport --no-daemon | grep -E "Variant: debug|SHA1:" || true
 
           # نسخ ملف الـ APK للمسار الرئيسي
           cp "$APK_FILE" "$GITHUB_WORKSPACE/app-debug-${{ github.event.client_payload.build_id }}.apk"
