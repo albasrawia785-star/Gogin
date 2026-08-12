@@ -1,4 +1,4 @@
-name: Universal Android Debug APK Builder (All Gradle Versions)
+name: Universal Android Debug APK Builder (Complete Production Version)
 
 on:
   repository_dispatch:
@@ -18,7 +18,7 @@ jobs:
         with:
           sslVerify: false
 
-      # 2. إعداد بيئة جافا (JDK 17 وهي الأكثر توافقاً مع جميع الإصدارات الحديثة والقديمة)
+      # 2. إعداد بيئة جافا (JDK 17)
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -50,21 +50,29 @@ jobs:
           mkdir -p project_dir
           unzip -o "$ZIP_FILE" -d project_dir
 
-      # 4. استبدال أيقونة المشروع تلقائياً (في حال وجود صورة مرفوعة)
-      - name: Replace App Icon
+      # 4. استبدال أيقونة المشروع تلقائياً (حذف ملفات XML التكيفية وإجبار الصورة الجديدة)
+      - name: Replace App Icon (Forced Override)
         run: |
           BUILD_ID="${{ github.event.client_payload.build_id }}"
-          ICON_FILE=$(find . -maxdepth 1 -name "*icon*${BUILD_ID}*" -o -name "*${BUILD_ID}*.png" | head -n 1)
+          ICON_FILE=$(find . -maxdepth 1 \( -name "*${BUILD_ID}*.png" -o -name "*${BUILD_ID}*.jpg" -o -name "*${BUILD_ID}*.jpeg" -o -name "*${BUILD_ID}*.webp" \) | head -n 1)
 
           if [ -n "$ICON_FILE" ]; then
-            echo "🖼️ تم العثور على صورة الأيقونة الجديدة: $ICON_FILE"
-            echo "🔄 جاري استبدال أيقونات ic_launcher داخل المشروع..."
-            
-            find project_dir -type f -name "ic_launcher*.png" -exec cp -f "$ICON_FILE" {} \;
-            find project_dir -type f -name "ic_launcher_round*.png" -exec cp -f "$ICON_FILE" {} \;
-            echo "✅ تم استبدال الأيقونة بنجاح!"
+            echo "🖼️ تم العثور على الأيقونة الجديدة: $ICON_FILE"
+
+            # 1. حذف ملفات XML الخاص بالأيقونات التكيفية لفرض استخدام الصورة المرفوعة
+            find project_dir -type f \( -name "ic_launcher*.xml" -o -name "ic_launcher_round*.xml" \) -exec rm -f {} \;
+
+            # 2. استبدال كافة صور الأيقونات بكل مسارات mipmap
+            find project_dir -type f \( \
+              -name "ic_launcher*.png" -o \
+              -name "ic_launcher_round*.png" -o \
+              -name "ic_launcher_foreground*.png" -o \
+              -name "ic_launcher_background*.png" \
+            \) -exec cp -f "$ICON_FILE" {} \;
+
+            echo "✅ تم حذف التكوينات القديمة واستبدال جميع الأيقونات بنجاح!"
           else
-            echo "ℹ️ لم يتم إرفاق أيقونة جديدة، سيتم التجميع بالأيقونة الأصلية."
+            echo "ℹ️ لم يتم العثور على أيقونة مرفوعة برقم $BUILD_ID، سيتم استخدام الأيقونة الأصلية."
           fi
         continue-on-error: true
 
@@ -96,14 +104,14 @@ jobs:
           echo "📂 جذر المشروع المحدد: $ROOT_DIR"
           cd "$ROOT_DIR"
 
-          # 🔧 إصلاح بروتوكولات روابط Gradle الضارة دون تغيير رقم الإصدار الخارجي للمشروع
+          # تصحيح روابط التنزيل في gradle-wrapper.properties إلى HTTPS
           WRAPPER_PROP=$(find . -name "gradle-wrapper.properties" | head -n 1)
           if [ -n "$WRAPPER_PROP" ]; then
             echo "🔧 تصحيح روابط التنزيل في gradle-wrapper.properties إلى HTTPS آمن..."
             sed -i 's|http\\://|https\\://|g' "$WRAPPER_PROP"
           fi
 
-          # تجهيز أذونات التنفيذ للـ Wrapper الخاص بالمشروع
+          # تجهيز أذونات التنفيذ للـ Wrapper
           if [ -f "gradlew" ]; then
             echo "✅ استخدام Gradle Wrapper المدمج مع مشروع المستخدم..."
             chmod +x gradlew
@@ -124,7 +132,7 @@ jobs:
           echo "🚀 بدء البناء بالاعتماد على إعدادات المشروع الأصلية..."
           ./gradlew clean assembleDebug --no-daemon
 
-          # البحث عن ملف الـ APK الناتج في جميع المسارات المحتملة
+          # البحث عن ملف الـ APK الناتج
           APK_FILE=$(find . -path "*/build/outputs/apk/debug/*.apk" -o -name "*debug*.apk" | head -n 1)
 
           if [ -z "$APK_FILE" ]; then
@@ -163,6 +171,8 @@ jobs:
           find . -maxdepth 1 -name "*.zip" -exec rm -f {} +
           find . -maxdepth 1 -name "*.png" -exec rm -f {} +
           find . -maxdepth 1 -name "*.jpg" -exec rm -f {} +
+          find . -maxdepth 1 -name "*.jpeg" -exec rm -f {} +
+          find . -maxdepth 1 -name "*.webp" -exec rm -f {} +
           
           git add . || true
           git commit -m "Auto cleanup for build ${{ github.event.client_payload.build_id }}" || true
