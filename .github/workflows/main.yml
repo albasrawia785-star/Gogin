@@ -1,4 +1,4 @@
-name: Build Debug Android APK (Final Robust Version)
+name: Build Debug Android APK with Firebase
 
 on:
   repository_dispatch:
@@ -7,104 +7,128 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
 
     steps:
+      # 1. سحب الكود الرئيسي للمستودع
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           sslVerify: false
 
+      # 2. إعداد بيئة جافا (JDK 17)
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'zulu'
 
-      # حل جذري لمشكلة "الملف غير موجود": محاولات تنزيل متعددة عبر الـ API
-      - name: Robust Download and Unzip Project
+      # 3. فك ضغط ملف المشروع المرفوع بحسب رقم البناء بأي اسم كان
+      - name: Robust Find and Unzip Project
         run: |
-          ZIP_NAME="project_${{ github.event.client_payload.build_id }}.zip"
-          echo "🔍 جاري البحث عن الملف: $ZIP_NAME"
+          BUILD_ID="${{ github.event.client_payload.build_id }}"
+          echo "🔍 جاري البحث عن أي ملف يحتوي على رقم البناء: $BUILD_ID"
           
-          # الانتظار والمحاولة 10 مرات (إجمالي 30 ثانية) لضمان انتهاء الرفع من الموقع
-          for i in {1..10}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                 -H "Accept: application/vnd.github.v3.raw" \
-                 -L "https://api.github.com/repos/${{ github.repository }}/contents/$ZIP_NAME" \
-                 -o "$ZIP_NAME"
-            
-            if [ -f "$ZIP_NAME" ] && [ -s "$ZIP_NAME" ]; then
-              echo "✅ تم الحصول على الملف بنجاح!"
+          # الانتظار والمحاولة حتى 5 مرات للتأكد من اكتمال الرفع من الموقع
+          for i in {1..5}; do
+            ZIP_FILE=$(find . -maxdepth 1 -name "*${BUILD_ID}*.zip" | head -n 1)
+            if [ -n "$ZIP_FILE" ]; then
+              echo "✅ تم العثور على الملف: $ZIP_FILE"
               break
             fi
-            echo "🔄 محاولة ($i/10): الملف لم يكتمل رفعه بعد، انتظار 3 ثوانٍ..."
+            echo "🔄 محاولة ($i/5): انتظار الرفع..."
             sleep 3
           done
 
-          if [ ! -f "$ZIP_NAME" ]; then
-            echo "❌ خطأ فادح: فشل تحميل الملف بعد محاولات عديدة."
+          if [ -z "$ZIP_FILE" ]; then
+            echo "❌ خطأ: لم يتم العثور على أي ملف zip يطابق رقم البناء $BUILD_ID"
+            ls -la
             exit 1
           fi
-          
-          unzip -o "$ZIP_NAME" -d project_dir
-          rm "$ZIP_NAME"
 
-      # إصلاح تعارضات Gradle التلقائي
-      - name: Smart Patch Gradle
+          # حفظ الاسم الفعلي للملف لاستخدامه في خطوة الحذف لاحقاً
+          echo "TARGET_ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
+          
+          unzip -o "$ZIP_FILE" -d project_dir
+
+      # 4. إصلاح تلقائي لمنع تعارضات Compose Compiler و Kotlin
+      - name: Smart Patch Gradle Files
         run: |
           cd project_dir
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
         continue-on-error: true
 
-      # عملية البناء والتوقيع
-      - name: Build and Sign
+      # 5. تحديد المسار والبناء والتوقيع
+      - name: Build Debug APK & Extract SHA-1
         env:
           _JAVA_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
         run: |
-          # البحث الآمن عن مسار المشروع
-          SETTINGS_FILE=$(find project_dir \( -name "settings.gradle.kts" -o -name "settings.gradle" -o -name "build.gradle" \) -print -quit)
+          SETTINGS_FILE=$(find project_dir \( -name "settings.gradle.kts" -o -name "settings.gradle" -o -name "build.gradle.kts" -o -name "build.gradle" \) -print -quit)
+
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "❌ خطأ: لم يتم العثور على ملفات أندرويد. تأكد من ضغط مجلد المشروع مباشرة!"
-            ls -R project_dir
+            echo "❌ خطأ: لم يتم العثور على أي ملفات بناء لأندرويد داخل الملف المضغوط!"
             exit 1
           fi
-          
-          cd "$(dirname "$SETTINGS_FILE")"
-          
-          [ ! -f "gradlew" ] && gradle wrapper
+
+          TARGET_DIR=$(dirname "$SETTINGS_FILE")
+          cd "$TARGET_DIR"
+
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper
+          fi
           chmod +x gradlew
 
-          # توقيع تلقائي
-          keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass "android" -keypass "android" -dname "CN=Android Debug, O=Android, C=US" || true
+          keytool -genkey -v -keystore debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "android" \
+            -keypass "android" \
+            -dname "CN=Android Debug, O=Android, C=US" || true
 
-          # بناء
           ./gradlew clean assembleDebug --no-daemon
 
-          # استخراج الناتج
+          ./gradlew signingReport --no-daemon | grep -E "Variant: debug|SHA1:" || true
+
           APK_FILE=$(find . -path "*/build/outputs/apk/debug/*.apk" -o -name "*debug*.apk" | head -n 1)
+
           if [ -z "$APK_FILE" ]; then
-            echo "❌ فشل البناء."
+            echo "❌ فشل العثور على ملف الـ APK الناتج!"
             exit 1
           fi
-          cp "$APK_FILE" "$GITHUB_WORKSPACE/app-debug.apk"
 
-      # رفع النتيجة
-      - name: Release
+          cp "$APK_FILE" "$GITHUB_WORKSPACE/app-debug-${{ github.event.client_payload.build_id }}.apk"
+
+      # 6. نشر الـ APK كـ Release
+      - name: Create Release for Debug APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "build-${{ github.event.client_payload.build_id }}"
-          name: "Debug APK ${{ github.event.client_payload.build_id }}"
-          files: "app-debug.apk"
+          name: "Debug APK Build ${{ github.event.client_payload.build_id }}"
+          files: "app-debug-${{ github.event.client_payload.build_id }}.apk"
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # تنظيف نهائي
-      - name: Cleanup
+      # 7. التنظيف الآلي والآمن لجميع الملفات المضغوطة وحذفها من المستودع
+      - name: Cleanup Repository
         if: always()
         run: |
-          rm -rf project_dir
-          rm -f "app-debug.apk"
+          git config --global http.sslVerify false
+          git config --global user.name "Auto Bot"
+          git config --global user.email "bot@github.com"
+          
+          # حذف مجلد البناء وملف ה- APK المؤقت
+          rm -rf project_dir || true
+          rm -f "app-debug-${{ github.event.client_payload.build_id }}.apk" || true
+          
+          # حذف كل ملفات الـ zip التي تحتوي على أرقام البناء لعدم تراكمها
+          find . -maxdepth 1 -name "*.zip" -exec rm -f {} +
+          
+          # عمل Commit للتنظيف ورفعه لـ GitHub فوراً
+          git add . || true
+          git commit -m "Auto cleanup zip files for build ${{ github.event.client_payload.build_id }}" || true
+          git pull origin main --rebase || true
+          git push origin main || true
