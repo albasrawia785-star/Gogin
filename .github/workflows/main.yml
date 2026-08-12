@@ -1,4 +1,4 @@
-name: Android Debug APK Builder (Final Production Version)
+name: Universal Android Debug APK Builder (All Gradle Versions)
 
 on:
   repository_dispatch:
@@ -18,7 +18,7 @@ jobs:
         with:
           sslVerify: false
 
-      # 2. إعداد بيئة جافا (JDK 17)
+      # 2. إعداد بيئة جافا (JDK 17 وهي الأكثر توافقاً مع جميع الإصدارات الحديثة والقديمة)
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -68,15 +68,15 @@ jobs:
           fi
         continue-on-error: true
 
-      # 5. إصلاح تعارضات المكاتب تلقائياً
+      # 5. إصلاح تعارضات المكاتب والنسخ آلياً
       - name: Smart Patch Gradle Files
         run: |
           cd project_dir
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
         continue-on-error: true
 
-      # 6. التجميع والبناء المخصص لـ Debug APK (مع إصلاح خطأ اتصالات Gradle Wrapper)
-      - name: Build Debug APK
+      # 6. البناء المرن الذكي الشامل لجميع إصدارات Gradle
+      - name: Build Debug APK (Universal Version Handler)
         env:
           _JAVA_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
@@ -96,22 +96,24 @@ jobs:
           echo "📂 جذر المشروع المحدد: $ROOT_DIR"
           cd "$ROOT_DIR"
 
-          # 🔧 إصلاح رابط التنزيل لتفادي خطأ GetInputStream وتعديل الـ Wrapper إلى HTTPS
+          # 🔧 إصلاح بروتوكولات روابط Gradle الضارة دون تغيير رقم الإصدار الخارجي للمشروع
           WRAPPER_PROP=$(find . -name "gradle-wrapper.properties" | head -n 1)
           if [ -n "$WRAPPER_PROP" ]; then
-            echo "🔧 تحديث وإصلاح روابط Gradle Wrapper لتفادي مشاكل الاتصال..."
+            echo "🔧 تصحيح روابط التنزيل في gradle-wrapper.properties إلى HTTPS آمن..."
             sed -i 's|http\\://|https\\://|g' "$WRAPPER_PROP"
-            sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.5-bin.zip|g' "$WRAPPER_PROP"
           fi
 
-          # تجهيز Gradle Wrapper
-          if [ ! -f "gradlew" ]; then
-            echo "⚠️ ملف gradlew غير موجود، جاري إنشاؤه آلياً..."
-            gradle wrapper --gradle-version 8.5
+          # تجهيز أذونات التنفيذ للـ Wrapper الخاص بالمشروع
+          if [ -f "gradlew" ]; then
+            echo "✅ استخدام Gradle Wrapper المدمج مع مشروع المستخدم..."
+            chmod +x gradlew
+          else
+            echo "⚠️ لم يتم العثور على gradlew، جاري توليد wrapper تلقائي متوافق..."
+            gradle wrapper
+            chmod +x gradlew
           fi
-          chmod +x gradlew
 
-          # توليد keystore للتوقيع الـ Debug
+          # توليد keystore للتوقيع
           keytool -genkey -v -keystore debug.keystore \
             -alias androiddebugkey \
             -keyalg RSA -keysize 2048 -validity 10000 \
@@ -119,10 +121,10 @@ jobs:
             -keypass "android" \
             -dname "CN=Android Debug, O=Android, C=US" || true
 
-          echo "🚀 بدء بناء نسخة الـ Debug APK..."
+          echo "🚀 بدء البناء بالاعتماد على إعدادات المشروع الأصلية..."
           ./gradlew clean assembleDebug --no-daemon
 
-          # البحث عن ملف الـ APK الناتج
+          # البحث عن ملف الـ APK الناتج في جميع المسارات المحتملة
           APK_FILE=$(find . -path "*/build/outputs/apk/debug/*.apk" -o -name "*debug*.apk" | head -n 1)
 
           if [ -z "$APK_FILE" ]; then
@@ -136,7 +138,7 @@ jobs:
           # نسخ ملف الـ APK للمسار الرئيسي
           cp "$APK_FILE" "$GITHUB_WORKSPACE/app-debug-${{ github.event.client_payload.build_id }}.apk"
 
-      # 7. نشر الـ APK كـ Release ليتسنى للموقع تنزيله مباشرة
+      # 7. نشر الـ APK كـ Release ليتم تنزيله آلياً
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
