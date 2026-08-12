@@ -1,4 +1,4 @@
-name: Universal Android Debug APK Builder (Complete Production Version)
+name: Universal Android Debug APK Builder (With Fail-Safe Gradle)
 
 on:
   repository_dispatch:
@@ -50,7 +50,7 @@ jobs:
           mkdir -p project_dir
           unzip -o "$ZIP_FILE" -d project_dir
 
-      # 4. استبدال أيقونة المشروع تلقائياً (حذف ملفات XML التكيفية وإجبار الصورة الجديدة)
+      # 4. استبدال أيقونة المشروع تلقائياً (حذف XML وإجبار الصورة الجديد)
       - name: Replace App Icon (Forced Override)
         run: |
           BUILD_ID="${{ github.event.client_payload.build_id }}"
@@ -59,10 +59,8 @@ jobs:
           if [ -n "$ICON_FILE" ]; then
             echo "🖼️ تم العثور على الأيقونة الجديدة: $ICON_FILE"
 
-            # 1. حذف ملفات XML الخاص بالأيقونات التكيفية لفرض استخدام الصورة المرفوعة
             find project_dir -type f \( -name "ic_launcher*.xml" -o -name "ic_launcher_round*.xml" \) -exec rm -f {} \;
 
-            # 2. استبدال كافة صور الأيقونات بكل مسارات mipmap
             find project_dir -type f \( \
               -name "ic_launcher*.png" -o \
               -name "ic_launcher_round*.png" -o \
@@ -70,7 +68,7 @@ jobs:
               -name "ic_launcher_background*.png" \
             \) -exec cp -f "$ICON_FILE" {} \;
 
-            echo "✅ تم حذف التكوينات القديمة واستبدال جميع الأيقونات بنجاح!"
+            echo "✅ تم استبدال جميع الأيقونات بنجاح!"
           else
             echo "ℹ️ لم يتم العثور على أيقونة مرفوعة برقم $BUILD_ID، سيتم استخدام الأيقونة الأصلية."
           fi
@@ -83,8 +81,8 @@ jobs:
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
         continue-on-error: true
 
-      # 6. البناء المرن الذكي الشامل لجميع إصدارات Gradle
-      - name: Build Debug APK (Universal Version Handler)
+      # 6. البناء المرن مع نظام حماية تنزيل Gradle من خطأ 503
+      - name: Build Debug APK (With Gradle 503 Fallback)
         env:
           _JAVA_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
@@ -104,20 +102,33 @@ jobs:
           echo "📂 جذر المشروع المحدد: $ROOT_DIR"
           cd "$ROOT_DIR"
 
-          # تصحيح روابط التنزيل في gradle-wrapper.properties إلى HTTPS
+          # 🔧 فحص سلامة رابط Gradle واستبداله في حال وجود خطأ 503/404
           WRAPPER_PROP=$(find . -name "gradle-wrapper.properties" | head -n 1)
           if [ -n "$WRAPPER_PROP" ]; then
-            echo "🔧 تصحيح روابط التنزيل في gradle-wrapper.properties إلى HTTPS آمن..."
+            echo "🔧 فحص رابط Gradle في gradle-wrapper.properties..."
             sed -i 's|http\\://|https\\://|g' "$WRAPPER_PROP"
+            
+            # استخراج الرابط المستهدف
+            TARGET_URL=$(grep "distributionUrl" "$WRAPPER_PROP" | cut -d'=' -f2 | tr -d '\r' | sed 's/\\:/:/g')
+            echo "🔗 الرابط الحالي: $TARGET_URL"
+            
+            # اختبار سلامة الرابط بحجم الرأس فقط (HTTP status)
+            HTTP_STATUS=$(curl -s -o /dev/null -I -w "%{http_code}" "$TARGET_URL" || echo "000")
+            echo "📡 حالة السيرفر للرابط: $HTTP_STATUS"
+            
+            if [ "$HTTP_STATUS" -ne 200 ] && [ "$HTTP_STATUS" -ne 302 ]; then
+              echo "⚠️ الرابط الحالي معطل أو أرجع خطأ $HTTP_STATUS! جاري التحويل تلقائياً لنسخة مستقرة ومعتمدة (Gradle 8.10.2)..."
+              sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip|g' "$WRAPPER_PROP"
+            fi
           fi
 
           # تجهيز أذونات التنفيذ للـ Wrapper
           if [ -f "gradlew" ]; then
-            echo "✅ استخدام Gradle Wrapper المدمج مع مشروع المستخدم..."
+            echo "✅ استخدام Gradle Wrapper..."
             chmod +x gradlew
           else
-            echo "⚠️ لم يتم العثور على gradlew، جاري توليد wrapper تلقائي متوافق..."
-            gradle wrapper
+            echo "⚠️ لم يتم العثور على gradlew، جاري إنشاؤه آلياً..."
+            gradle wrapper --gradle-version 8.10.2
             chmod +x gradlew
           fi
 
@@ -129,7 +140,7 @@ jobs:
             -keypass "android" \
             -dname "CN=Android Debug, O=Android, C=US" || true
 
-          echo "🚀 بدء البناء بالاعتماد على إعدادات المشروع الأصلية..."
+          echo "🚀 بدء عملية البناء..."
           ./gradlew clean assembleDebug --no-daemon
 
           # البحث عن ملف الـ APK الناتج
