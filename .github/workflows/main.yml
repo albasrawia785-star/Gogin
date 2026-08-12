@@ -1,4 +1,4 @@
-name: Universal Android Debug APK Builder (With Fail-Safe Gradle)
+name: Universal Android Debug APK Builder (Final Exact Version Match)
 
 on:
   repository_dispatch:
@@ -50,7 +50,7 @@ jobs:
           mkdir -p project_dir
           unzip -o "$ZIP_FILE" -d project_dir
 
-      # 4. استبدال أيقونة المشروع تلقائياً (حذف XML وإجبار الصورة الجديد)
+      # 4. استبدال أيقونة المشروع تلقائياً (حذف XML وإجبار الصورة الجديدة)
       - name: Replace App Icon (Forced Override)
         run: |
           BUILD_ID="${{ github.event.client_payload.build_id }}"
@@ -81,8 +81,8 @@ jobs:
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
         continue-on-error: true
 
-      # 6. البناء المرن مع نظام حماية تنزيل Gradle من خطأ 503
-      - name: Build Debug APK (With Gradle 503 Fallback)
+      # 6. البناء بالاعتماد الدقيق على إصدار المشروع الأصلي
+      - name: Build Debug APK (Exact Project Gradle Match)
         env:
           _JAVA_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
@@ -102,23 +102,16 @@ jobs:
           echo "📂 جذر المشروع المحدد: $ROOT_DIR"
           cd "$ROOT_DIR"
 
-          # 🔧 فحص سلامة رابط Gradle واستبداله في حال وجود خطأ 503/404
+          # 🔧 تحويل الروابط إلى HTTPS وتأمين الاصدار الأصلي للمشروع
           WRAPPER_PROP=$(find . -name "gradle-wrapper.properties" | head -n 1)
           if [ -n "$WRAPPER_PROP" ]; then
-            echo "🔧 فحص رابط Gradle في gradle-wrapper.properties..."
+            echo "🔧 تصحيح بروتوكول التنزيل في gradle-wrapper.properties إلى HTTPS..."
             sed -i 's|http\\://|https\\://|g' "$WRAPPER_PROP"
             
-            # استخراج الرابط المستهدف
-            TARGET_URL=$(grep "distributionUrl" "$WRAPPER_PROP" | cut -d'=' -f2 | tr -d '\r' | sed 's/\\:/:/g')
-            echo "🔗 الرابط الحالي: $TARGET_URL"
-            
-            # اختبار سلامة الرابط بحجم الرأس فقط (HTTP status)
-            HTTP_STATUS=$(curl -s -o /dev/null -I -w "%{http_code}" "$TARGET_URL" || echo "000")
-            echo "📡 حالة السيرفر للرابط: $HTTP_STATUS"
-            
-            if [ "$HTTP_STATUS" -ne 200 ] && [ "$HTTP_STATUS" -ne 302 ]; then
-              echo "⚠️ الرابط الحالي معطل أو أرجع خطأ $HTTP_STATUS! جاري التحويل تلقائياً لنسخة مستقرة ومعتمدة (Gradle 8.10.2)..."
-              sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip|g' "$WRAPPER_PROP"
+            # التأكد من التوافق في حال وجود إصدار غير مستقر (9.6.1 -> 9.3.1)
+            if grep -q "gradle-9.6" "$WRAPPER_PROP"; then
+              echo "🔄 تعديل النسخة التجريبية إلى النسخة المستقرة الرسمية المطلوبة (Gradle 9.3.1)..."
+              sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-9.3.1-bin.zip|g' "$WRAPPER_PROP"
             fi
           fi
 
@@ -127,8 +120,8 @@ jobs:
             echo "✅ استخدام Gradle Wrapper..."
             chmod +x gradlew
           else
-            echo "⚠️ لم يتم العثور على gradlew، جاري إنشاؤه آلياً..."
-            gradle wrapper --gradle-version 8.10.2
+            echo "⚠️ لم يتم العثور على gradlew، جاري إنشاؤه لـ 9.3.1..."
+            gradle wrapper --gradle-version 9.3.1
             chmod +x gradlew
           fi
 
