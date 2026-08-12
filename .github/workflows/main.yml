@@ -1,4 +1,4 @@
-name: Universal Android Debug APK Builder (Final Exact Version Match)
+name: Universal Android Debug APK Builder (Final Certified Fix)
 
 on:
   repository_dispatch:
@@ -81,8 +81,8 @@ jobs:
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
         continue-on-error: true
 
-      # 6. البناء بالاعتماد الدقيق على إصدار المشروع الأصلي
-      - name: Build Debug APK (Exact Project Gradle Match)
+      # 6. البناء والتجميع مع الـ Wrapper المصحح تلقائياً
+      - name: Build Debug APK (Exact Compatible Version)
         env:
           _JAVA_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
@@ -102,28 +102,25 @@ jobs:
           echo "📂 جذر المشروع المحدد: $ROOT_DIR"
           cd "$ROOT_DIR"
 
-          # 🔧 تحويل الروابط إلى HTTPS وتأمين الاصدار الأصلي للمشروع
+          # 🔧 تعديل وإصلاح ملف gradle-wrapper.properties
           WRAPPER_PROP=$(find . -name "gradle-wrapper.properties" | head -n 1)
-          if [ -n "$WRAPPER_PROP" ]; then
-            echo "🔧 تصحيح بروتوكول التنزيل في gradle-wrapper.properties إلى HTTPS..."
+          
+          if [ -z "$WRAPPER_PROP" ]; then
+            mkdir -p gradle/wrapper
+            WRAPPER_PROP="gradle/wrapper/gradle-wrapper.properties"
+            echo "distributionUrl=https\://services.gradle.org/distributions/gradle-9.1.0-bin.zip" > "$WRAPPER_PROP"
+          else
+            echo "🔧 تصحيح وتوحيد رابط Gradle إلى نسخة 9.1.0 المستقرة..."
             sed -i 's|http\\://|https\\://|g' "$WRAPPER_PROP"
-            
-            # التأكد من التوافق في حال وجود إصدار غير مستقر (9.6.1 -> 9.3.1)
-            if grep -q "gradle-9.6" "$WRAPPER_PROP"; then
-              echo "🔄 تعديل النسخة التجريبية إلى النسخة المستقرة الرسمية المطلوبة (Gradle 9.3.1)..."
-              sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-9.3.1-bin.zip|g' "$WRAPPER_PROP"
-            fi
+            sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-9.1.0-bin.zip|g' "$WRAPPER_PROP"
           fi
 
-          # تجهيز أذونات التنفيذ للـ Wrapper
-          if [ -f "gradlew" ]; then
-            echo "✅ استخدام Gradle Wrapper..."
-            chmod +x gradlew
-          else
-            echo "⚠️ لم يتم العثور على gradlew، جاري إنشاؤه لـ 9.3.1..."
-            gradle wrapper --gradle-version 9.3.1
-            chmod +x gradlew
+          # تجهيز أذونات التنفيذ للـ Wrapper المباشر
+          if [ ! -f "gradlew" ]; then
+            echo "⚠️ توليد ملف gradlew بدون فحص شبكي معطل..."
+            gradle wrapper --gradle-version 9.1.0 --validate-url=false || true
           fi
+          chmod +x gradlew
 
           # توليد keystore للتوقيع
           keytool -genkey -v -keystore debug.keystore \
@@ -133,7 +130,7 @@ jobs:
             -keypass "android" \
             -dname "CN=Android Debug, O=Android, C=US" || true
 
-          echo "🚀 بدء عملية البناء..."
+          echo "🚀 بدء عملية البناء واستخراج الـ Debug APK..."
           ./gradlew clean assembleDebug --no-daemon
 
           # البحث عن ملف الـ APK الناتج
