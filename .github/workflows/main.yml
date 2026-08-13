@@ -25,7 +25,7 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
-      # 3. البحث الشامل عن ملف الـ ZIP في الجذر أو مجلد uploads وفك ضغطه
+      # 3. البحث المباشر عن ملف الـ ZIP في الجذر وفك ضغطه
       - name: Find and Unzip Project
         run: |
           BUILD_ID="${{ github.event.client_payload.build_id }}"
@@ -33,17 +33,22 @@ jobs:
           
           ZIP_FILE=""
           for i in {1..10}; do
-            ZIP_FILE=$(find . -name "*${BUILD_ID}*.zip" | head -n 1)
+            # البحث المباشر في الجذر الرئيسي
+            ZIP_FILE=$(find . -maxdepth 2 -name "*${BUILD_ID}*.zip" | head -n 1)
+            if [ -z "$ZIP_FILE" ]; then
+              ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
+            fi
+
             if [ -n "$ZIP_FILE" ]; then
               echo "✅ تم العثور على الملف: $ZIP_FILE"
               break
             fi
-            echo "🔄 محاولة ($i/10): انتظار اكتمال رفع الملف..."
+            echo "🔄 محاولة ($i/10): انتظار الملف..."
             sleep 3
           done
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "❌ خطأ: لم يتم العثور على الملف المطلوب برقم $BUILD_ID!"
+            echo "❌ خطأ: لم يتم العثور على ملف zip برقم $BUILD_ID في الجذر!"
             exit 1
           fi
 
@@ -106,11 +111,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 7. تنظيف المجلد uploads وإزالة ملفات الـ ZIP بعد النجاح
-      - name: Cleanup Uploads Directory
+      # 7. تنظيف مجلدات البناء وملفات zip المؤقتة في الجذر
+      - name: Cleanup Temporary Files
         if: always()
         run: |
-          echo "🧹 جاري تنظيف مجلد uploads والحاويات المؤقتة..."
-          rm -rf uploads/*
+          echo "🧹 جاري تنظيف ملفات البناء والمشاريع المؤقتة..."
           rm -rf project_dir
-          echo "✨ تم تنظيف المساحة بنجاح."
+          rm -f *.zip
+          echo "✨ تم تنظيف المستودع بنجاح."
