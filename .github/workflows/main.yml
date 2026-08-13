@@ -96,8 +96,8 @@ jobs:
           find . -name "build.gradle*" -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
         continue-on-error: true
 
-      # 6. البناء والتجميع بـ Gradle المباشر (يدعم APK و AAB مع فحص المفاتيح)
-      - name: Dual Build Engine (APK & AAB with Smart Signing)
+      # 6. البناء والتجميع بـ Gradle المباشر مع توليد وتغطية ملفات Keystore الشاملة
+      - name: Dual Build Engine (APK & AAB with Universal Keystore Fix)
         env:
           _JAVA_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
@@ -117,22 +117,29 @@ jobs:
           echo "📂 جذر المشروع المحدد: $ROOT_DIR"
           cd "$ROOT_DIR"
 
-          # 🔑 فحص مفاتيح التوقيع داخل المشروع (Keystore Inspection)
-          EXISTING_KEYSTORE=$(find . -name "*.keystore" -o -name "*.jks" | head -n 1)
+          # 🔑 1. توليد مفاتيح توقيع موحدة شاملة لـ Debug و Release
+          echo "🔑 جاري إنشاء ملفات التوقيع الشاملة..."
+          keytool -genkey -v -keystore debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "android" \
+            -keypass "android" \
+            -dname "CN=Android Debug, O=Android, C=US" || true
 
-          if [ -n "$EXISTING_KEYSTORE" ]; then
-            echo "🔑 تم العثور على مفتاح توقيع مسبق داخل المشروع: $EXISTING_KEYSTORE"
-          else
-            echo "🔑 لم يتم العثور على مفتاح توقيع، جاري توليد مفتاح توقيع جديد تلقائياً..."
-            keytool -genkey -v -keystore release.keystore \
-              -alias androidreleasekey \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "android" \
-              -keypass "android" \
-              -dname "CN=Android Release, O=Android, C=US" || true
+          keytool -genkey -v -keystore release.keystore \
+            -alias androidreleasekey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "android" \
+            -keypass "android" \
+            -dname "CN=Android Release, O=Android, C=US" || true
+
+          # 🔑 2. نسخ المفتاح إلى كافة المسارات الفرعية المتوقعة (Root و app/) لمنع خطأ File Not Found
+          if [ -d "app" ]; then
+            cp -f debug.keystore app/debug.keystore || true
+            cp -f release.keystore app/release.keystore || true
           fi
 
-          # ⚙️ تحديد نوع البناء الممرر من العميل (aab أو apk)
+          # ⚙️ 3. تحديد نوع البناء الممرر من العميل (aab أو apk)
           BUILD_TYPE="${{ github.event.client_payload.build_type }}"
           BUILD_ID="${{ github.event.client_payload.build_id }}"
 
