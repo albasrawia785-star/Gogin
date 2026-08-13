@@ -33,7 +33,7 @@ jobs:
           
           ZIP_FILE=""
           for i in {1..10}; do
-            # البحث المباشر في الجذر الرئيسي
+            # البحث في الجذر المباشر
             ZIP_FILE=$(find . -maxdepth 2 -name "*${BUILD_ID}*.zip" | head -n 1)
             if [ -z "$ZIP_FILE" ]; then
               ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
@@ -111,11 +111,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 7. تنظيف مجلدات البناء وملفات zip المؤقتة في الجذر
-      - name: Cleanup Temporary Files
+      # 7. كود التنظيف تلقائياً (يمسح ملفات الـ ZIP والمجلدات المؤقتة من الجذر)
+      - name: Cleanup Root Directory
         if: always()
         run: |
-          echo "🧹 جاري تنظيف ملفات البناء والمشاريع المؤقتة..."
+          echo "🧹 جاري تنظيف المستودع وملفات الـ ZIP المؤقتة من الجذر..."
           rm -rf project_dir
           rm -f *.zip
-          echo "✨ تم تنظيف المستودع بنجاح."
+          echo "✨ تم تنظيف المستودع بنجاح واستعادته لنقائه."
