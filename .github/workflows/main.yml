@@ -1,4 +1,4 @@
-name: Universal Dual Android Builder
+Name: Universal Dual Android Builder
 
 on:
   repository_dispatch:
@@ -117,11 +117,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 7. التنظيف التلقائي الشامل لملفات الـ ZIP والصور من الجذر
-      - name: Cleanup Root Directory
+      # 7. التنظيف الفعلي وإرسال التغييرات إلى المستودع (Git Commit & Push)
+      - name: Cleanup Root Directory and Commit Changes
         if: always()
         run: |
-          echo "🧹 جاري تنظيف المستودع وملفات الـ ZIP والصور المؤقتة من الجذر..."
+          echo "🧹 جاري حذف كافة الملفات المرفوعة نهائياً من المستودع..."
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # مسح مجلد العمل المؤقت وكافة ملفات الـ ZIP والصور من الجذر
           rm -rf project_dir
           rm -f *.zip *.png
+          
+          # تثبيت التغييرات ورفعها للمستودع لتنظيف شاشة GitHub
+          git add -A
+          git commit -m "Auto-clean build artifacts" || echo "لا توجد ملفات للتنظيف"
+          git push origin main || echo "تعذر إجراء push المباشر"
           echo "✨ تم تنظيف المستودع بنجاح."
