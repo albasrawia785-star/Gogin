@@ -106,7 +106,7 @@ jobs:
 
           cp "$OUT_FILE" "$GITHUB_WORKSPACE/$FINAL_NAME"
 
-      # 6. نشر الملف الناتج في قسم Releases لتجهيز التنزيل المباشر
+      # 6. نشر الملف بـ Tag مخصص برقم البناء الحقيقي لمنع تنزيل التطبيقات القديمة
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -117,7 +117,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 7. التنظيف الفعلي وإرسال التغييرات إلى المستودع (Git Commit & Push)
+      # 7. تنظيف الجذر ورفع التحديثات فوراً لمنع تراكم الملفات
       - name: Cleanup Root Directory and Commit Changes
         if: always()
         run: |
@@ -125,11 +125,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # مسح مجلد العمل المؤقت وكافة ملفات الـ ZIP والصور من الجذر
           rm -rf project_dir
           rm -f *.zip *.png
           
-          # تثبيت التغييرات ورفعها للمستودع لتنظيف شاشة GitHub
           git add -A
           git commit -m "Auto-clean build artifacts" || echo "لا توجد ملفات للتنظيف"
           git push origin main || echo "تعذر إجراء push المباشر"
