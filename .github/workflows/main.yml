@@ -54,16 +54,18 @@ jobs:
           mkdir -p project_dir
           unzip -o "$ZIP_FILE" -d project_dir
 
-      # 4. إصلاح شامل ومتقدم لمشكلة AbstractMethodError و Compose Compiler
-      - name: Patch Gradle & Fix Compose Compiler Crash
+      # 4. الإصلاح الجذري الشامل لخطأ Compose Compiler و Kotlin
+      - name: Completely Remove Legacy Compose Compiler
         run: |
           cd project_dir
           
-          # حذف المكونات القديمة لـ Compose التي تسبب التعارض مع إصدارات Kotlin الجديدة
-          find . -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
-          find . -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i '/suppressKotlinVersionCompatibilityCheck/d' {} +
+          # إزالة جميع إشارات إضافة Compose Compiler القديمة
+          find . -type f \( -name "*.gradle" -o -name "*.gradle.kts" \) -exec sed -i '/kotlinCompilerExtensionVersion/d' {} +
+          find . -type f \( -name "*.gradle" -o -name "*.gradle.kts" \) -exec sed -i '/suppressKotlinVersionCompatibilityCheck/d' {} +
+          find . -type f \( -name "*.gradle" -o -name "*.gradle.kts" \) -exec sed -i '/org.jetbrains.kotlin.android/s/$/\n    id("org.jetbrains.kotlin.plugin.compose") apply false/' {} +
+          find . -type f \( -name "*.gradle" -o -name "*.gradle.kts" \) -exec sed -i '/androidx.compose.compiler/d' {} +
           
-          # إجبار إغلاق خيار التوافق المسبب للخطأ وتخطي التحذيرات
+          # إجبار إغلاق خيارات التوافق وتخطي تحذيرات SDK
           echo "android.suppressUnsupportedCompileSdk=true" >> gradle.properties
           echo "kotlin.mpp.stability.nowarn=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
@@ -115,11 +117,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 7. التنظيف التلقائي والمباشر من الجذر
+      # 7. التنظيف التلقائي الشامل لملفات الـ ZIP والصور من الجذر
       - name: Cleanup Root Directory
         if: always()
         run: |
-          echo "🧹 جاري تنظيف المستودع وملفات الـ ZIP المؤقتة من الجذر..."
+          echo "🧹 جاري تنظيف المستودع وملفات الـ ZIP والصور المؤقتة من الجذر..."
           rm -rf project_dir
-          rm -f *.zip
-          echo "✨ تم تنظيف المستودع بنجاح واستعادته لنقائه."
+          rm -f *.zip *.png
+          echo "✨ تم تنظيف المستودع بنجاح."
